@@ -8,7 +8,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { createClient }               from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { C, FONT }                    from "@/lib/constants";
 
@@ -38,7 +38,7 @@ export default function SignInPage() {
 
   // If user lands here already signed in, bounce them
   useEffect(() => {
-    const supabase = createClient();
+
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) router.replace(redirectTo);
     });
@@ -47,7 +47,6 @@ export default function SignInPage() {
   const handleOAuth = async (provider: Provider) => {
     setState({ status: "loading", provider });
 
-    const supabase    = createClient();
     const callbackUrl =
       `${window.location.origin}/api/auth/callback` +
       `?redirectTo=${encodeURIComponent(redirectTo)}`;
