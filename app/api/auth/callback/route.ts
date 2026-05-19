@@ -1,19 +1,8 @@
 // app/api/auth/callback/route.ts
-//
-// OAuth callback handler for Supabase Auth (Google, Discord, Magic Link).
-// Supabase redirects here after the user authenticates with an OAuth provider.
-// This route exchanges the temporary code for a real session, then redirects
-// the user to their intended destination.
-//
-// Configure this URL in:
-//   Supabase Dashboard → Authentication → URL Configuration → Redirect URLs
-//   Add: http://localhost:3000/api/auth/callback
-//   Add: https://yourdomain.com/api/auth/callback
 
 import { NextRequest, NextResponse }   from "next/server";
 import { createSupabaseServerClient }  from "@/lib/supabase/server";
-
-// ─── CALLBACK HANDLER ─────────────────────────────────────────────────────────
+import type { UserInsert }             from "@/types/database.types";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const { searchParams, origin } = new URL(request.url);
@@ -23,7 +12,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const error       = searchParams.get("error");
   const errorDesc   = searchParams.get("error_description");
 
-  // ── OAuth provider returned an error ─────────────────────────────────────
   if (error) {
     console.error("[auth/callback] Provider error:", error, errorDesc);
     return NextResponse.redirect(
@@ -31,7 +19,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // ── No code present — bad request ────────────────────────────────────────
   if (!code) {
     console.error("[auth/callback] No code received.");
     return NextResponse.redirect(
@@ -39,7 +26,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // ── Exchange code for session ─────────────────────────────────────────────
   const supabase = createSupabaseServerClient();
 
   const { data, error: exchangeError } =
@@ -52,32 +38,26 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // ── Upsert user row in public.users ───────────────────────────────────────
-  // Ensures a profile row exists the first time a user signs in via OAuth.
-  // Uses upsert with ignoreDuplicates so repeat sign-ins are a no-op.
   const { user } = data.session;
+
+  // ── Explicit type cast to satisfy Supabase generics ──────────────────────
+  const upsertPayload: UserInsert = {
+    id:       user.id,
+    username: user.user_metadata?.full_name
+      ?? user.email?.split("@")[0]
+      ?? null,
+    avatar:   user.user_metadata?.avatar_url ?? null,
+    bio:      null,
+  };
 
   const { error: upsertError } = await supabase
     .from("users")
-    .upsert(
-      {
-        id:       user.id,
-        username: user.user_metadata?.full_name
-          ?? user.email?.split("@")[0]
-          ?? null,
-        avatar:   user.user_metadata?.avatar_url ?? null,
-        bio:      null,
-      },
-      { onConflict: "id", ignoreDuplicates: true },
-    );
+    .upsert(upsertPayload, { onConflict: "id", ignoreDuplicates: true });
 
   if (upsertError) {
-    // Non-fatal — user can still use the app, profile just may be missing.
     console.warn("[auth/callback] Profile upsert warning:", upsertError.message);
   }
 
-  // ── Sanitise redirect destination ─────────────────────────────────────────
-  // Only allow relative paths to prevent open-redirect attacks.
   const safeRedirect = redirectTo.startsWith("/") ? redirectTo : "/";
 
   console.log(
