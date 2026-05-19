@@ -25,7 +25,7 @@ const UuidSchema = z.string().uuid("Invalid race ID format.");
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } },
+  context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   // 1. Validate id param
   const parsed = UuidSchema.safeParse(params.id);
@@ -123,7 +123,7 @@ export async function GET(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } },
+  context: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   // 1. Admin guard
   const guard = await requireAdmin();
