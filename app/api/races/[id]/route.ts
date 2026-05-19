@@ -1,15 +1,4 @@
 // app/api/races/[id]/route.ts
-//
-// GET    /api/races/[id]   → fetch a single race by id
-// DELETE /api/races/[id]   → admin-only hard delete of a race record
-//
-// GET is semi-public:
-//   - Owner can always fetch their own race (public or private)
-//   - Non-owners can only fetch public, non-removed races
-//   - Unauthenticated users can fetch public, non-removed races
-//
-// DELETE is admin-only.
-// Uses requireAdmin() — non-admins receive 403.
 
 import { NextRequest, NextResponse }  from "next/server";
 import { getSession }                  from "@/lib/auth/getSession";
@@ -17,18 +6,17 @@ import { requireAdmin }                from "@/lib/auth/requireAuth";
 import { getRaceById, updateRace }     from "@/lib/db/races";
 import { z }                           from "zod";
 
-// ─── PARAM SCHEMA ─────────────────────────────────────────────────────────────
-
 const UuidSchema = z.string().uuid("Invalid race ID format.");
 
 // ─── GET /api/races/[id] ──────────────────────────────────────────────────────
 
 export async function GET(
   _request: NextRequest,
-  context: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> },  // ← Promise هنا
 ): Promise<NextResponse> {
-  // 1. Validate id param
-  const parsed = UuidSchema.safeParse(params.id);
+  const { id } = await params;  // ← await هنا
+
+  const parsed = UuidSchema.safeParse(id);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid race ID." },
@@ -38,7 +26,6 @@ export async function GET(
 
   const raceId = parsed.data;
 
-  // 2. Fetch race
   const { data: race, error } = await getRaceById(raceId);
 
   if (error) {
@@ -55,10 +42,7 @@ export async function GET(
     );
   }
 
-  // 3. Access control
-  // Removed races are invisible to everyone except admins
   if (race.status === "REMOVED") {
-    // Check if requester is admin — if not, return 404 (not 403, to avoid leaking existence)
     const { user } = await getSession();
     if (!user) {
       return NextResponse.json({ error: "Race not found." }, { status: 404 });
@@ -78,7 +62,6 @@ export async function GET(
     }
   }
 
-  // 4. Private race — only owner can view
   if (race.is_private) {
     const { user } = await getSession();
     if (!user || user.id !== race.user_id) {
@@ -89,8 +72,6 @@ export async function GET(
     }
   }
 
-  // 5. Sanitise route_points for non-owners
-  // Strip GPS coordinates from other people's races for privacy
   const { user } = await getSession();
   const isOwner  = user?.id === race.user_id;
 
@@ -98,12 +79,10 @@ export async function GET(
     ? race
     : {
         ...race,
-        // Mask exact GPS start/finish for non-owners
-        start_lat:    race.start_lat    !== null ? Number(race.start_lat.toFixed(2))  : null,
-        start_lng:    race.start_lng    !== null ? Number(race.start_lng.toFixed(2))  : null,
-        finish_lat:   race.finish_lat   !== null ? Number(race.finish_lat.toFixed(2)) : null,
-        finish_lng:   race.finish_lng   !== null ? Number(race.finish_lng.toFixed(2)) : null,
-        // Strip full route point array — only owner gets the replay data
+        start_lat:    race.start_lat    !== null ? Number(race.start_lat.toFixed(2))   : null,
+        start_lng:    race.start_lng    !== null ? Number(race.start_lng.toFixed(2))   : null,
+        finish_lat:   race.finish_lat   !== null ? Number(race.finish_lat.toFixed(2))  : null,
+        finish_lng:   race.finish_lng   !== null ? Number(race.finish_lng.toFixed(2))  : null,
         route_points: null,
       };
 
@@ -111,10 +90,7 @@ export async function GET(
     { race: sanitised },
     {
       status: 200,
-      headers: {
-        // Short cache — race status can change (flagged → approved)
-        "Cache-Control": "private, max-age=30",
-      },
+      headers: { "Cache-Control": "private, max-age=30" },
     },
   );
 }
@@ -123,14 +99,14 @@ export async function GET(
 
 export async function DELETE(
   _request: NextRequest,
-  context: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> },  // ← Promise هنا
 ): Promise<NextResponse> {
-  // 1. Admin guard
   const guard = await requireAdmin();
   if (!guard.ok) return guard.response;
 
-  // 2. Validate id param
-  const parsed = UuidSchema.safeParse(params.id);
+  const { id } = await params;  // ← await هنا
+
+  const parsed = UuidSchema.safeParse(id);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid race ID." },
@@ -140,7 +116,6 @@ export async function DELETE(
 
   const raceId = parsed.data;
 
-  // 3. Verify race exists before attempting delete
   const { data: existing, error: fetchError } = await getRaceById(raceId);
 
   if (fetchError) {
@@ -157,8 +132,6 @@ export async function DELETE(
     );
   }
 
-  // 4. Soft delete — set status to REMOVED rather than hard deleting
-  // Preserves the audit trail and prevents leaderboard orphan entries
   const { data: removed, error: removeError } = await updateRace(raceId, {
     status:      "REMOVED",
     reviewed:    true,
@@ -172,9 +145,7 @@ export async function DELETE(
     );
   }
 
-  console.log(
-    `[api/races/${raceId}] Soft-deleted by admin ${guard.userId}.`,
-  );
+  console.log(`[api/races/${raceId}] Soft-deleted by admin ${guard.userId}.`);
 
   return NextResponse.json(
     {
@@ -188,22 +159,13 @@ export async function DELETE(
 // ─── METHOD GUARDS ────────────────────────────────────────────────────────────
 
 export async function POST(): Promise<NextResponse> {
-  return NextResponse.json(
-    { error: "Method not allowed." },
-    { status: 405 },
-  );
+  return NextResponse.json({ error: "Method not allowed." }, { status: 405 });
 }
 
 export async function PUT(): Promise<NextResponse> {
-  return NextResponse.json(
-    { error: "Method not allowed." },
-    { status: 405 },
-  );
+  return NextResponse.json({ error: "Method not allowed." }, { status: 405 });
 }
 
 export async function PATCH(): Promise<NextResponse> {
-  return NextResponse.json(
-    { error: "Method not allowed." },
-    { status: 405 },
-  );
+  return NextResponse.json({ error: "Method not allowed." }, { status: 405 });
 }
