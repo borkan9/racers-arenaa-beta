@@ -3,6 +3,7 @@
 import { NextResponse }              from "next/server";
 import { getSession }                from "@/lib/auth/getSession";
 import type { User }                 from "@supabase/supabase-js";
+import { CLIENT_STATIC_FILES_RUNTIME_WEBPACK } from "next/dist/shared/lib/constants";
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
