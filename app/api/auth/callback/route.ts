@@ -1,15 +1,15 @@
 // app/api/auth/callback/route.ts
 
-import { NextRequest, NextResponse }   from "next/server";
-import { createSupabaseServerClient }  from "@/lib/supabase/server";
+import { NextRequest, NextResponse }  from "next/server";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const { searchParams, origin } = new URL(request.url);
 
-  const code        = searchParams.get("code");
-  const redirectTo  = searchParams.get("redirectTo") ?? "/";
-  const error       = searchParams.get("error");
-  const errorDesc   = searchParams.get("error_description");
+  const code       = searchParams.get("code");
+  const redirectTo = searchParams.get("redirectTo") ?? "/";
+  const error      = searchParams.get("error");
+  const errorDesc  = searchParams.get("error_description");
 
   if (error) {
     console.error("[auth/callback] Provider error:", error, errorDesc);
@@ -39,18 +39,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const { user } = data.session;
 
-  // ── Use raw query to bypass type inference issues ─────────────────────────
+  const username =
+    (user.user_metadata?.full_name as string | undefined) ??
+    user.email?.split("@")[0] ??
+    null;
+
+  const avatar =
+    (user.user_metadata?.avatar_url as string | undefined) ?? null;
+
+  // Insert only if row doesn't exist yet — avoids overwriting existing profile
   const { error: upsertError } = await supabase
     .from("users")
     .upsert(
-      {
-        id:       user.id,
-        username: (user.user_metadata?.full_name as string | undefined)
-          ?? user.email?.split("@")[0]
-          ?? null,
-        avatar:   (user.user_metadata?.avatar_url as string | undefined) ?? null,
-        bio:      null,
-      } as never,  // ← bypass strict type check
+      { id: user.id, username, avatar, bio: null },
       { onConflict: "id", ignoreDuplicates: true },
     );
 
