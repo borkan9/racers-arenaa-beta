@@ -20,9 +20,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   if (!code) {
     console.error("[auth/callback] No code received.");
-    return NextResponse.redirect(
-      `${origin}/auth/signin?error=missing_code`,
-    );
+    return NextResponse.redirect(`${origin}/auth/signin?error=missing_code`);
   }
 
   const supabase = createSupabaseServerClient();
@@ -32,9 +30,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   if (exchangeError || !data.session) {
     console.error("[auth/callback] Code exchange failed:", exchangeError);
-    return NextResponse.redirect(
-      `${origin}/auth/signin?error=exchange_failed`,
-    );
+    return NextResponse.redirect(`${origin}/auth/signin?error=exchange_failed`);
   }
 
   const { user } = data.session;
@@ -47,8 +43,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const avatar =
     (user.user_metadata?.avatar_url as string | undefined) ?? null;
 
-  // Insert only if row doesn't exist yet — avoids overwriting existing profile
-  const { error: upsertError } = await supabase
+  // Use type assertion to bypass Supabase generic inference issue
+  const supabaseAny = supabase as unknown as {
+    from: (table: string) => {
+      upsert: (
+        data: Record<string, unknown>,
+        options: Record<string, unknown>,
+      ) => Promise<{ error: { message: string } | null }>;
+    };
+  };
+
+  const { error: upsertError } = await supabaseAny
     .from("users")
     .upsert(
       { id: user.id, username, avatar, bio: null },
