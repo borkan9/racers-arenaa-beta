@@ -92,7 +92,35 @@ export async function upsertLeaderboardEntry(
   const supabase  = createSupabaseServerClient();
   const ascending = payload.board_type === "BEST_TIME";
 
-  const { data: existing, error: fetchError } = await supabase
+  // Use raw client to bypass strict generic inference
+  const rawClient = supabase as unknown as {
+    from: (table: string) => {
+      select: (cols: string) => {
+        eq:         (col: string, val: unknown) => {
+          eq:         (col: string, val: unknown) => {
+            eq:         (col: string, val: unknown) => {
+              maybeSingle: () => Promise<{ data: unknown; error: { message: string } | null }>;
+            };
+          };
+        };
+      };
+      update: (vals: Record<string, unknown>) => {
+        eq: (col: string, val: unknown) => {
+          select: () => {
+            single: () => Promise<{ data: unknown; error: { message: string } | null }>;
+          };
+        };
+      };
+      insert: (vals: unknown) => {
+        select: () => {
+          single: () => Promise<{ data: unknown; error: { message: string } | null }>;
+        };
+      };
+    };
+  };
+
+  // Check existing
+  const { data: existing, error: fetchError } = await rawClient
     .from("leaderboard_entries")
     .select("id, value")
     .eq("user_id",    payload.user_id)
@@ -106,21 +134,20 @@ export async function upsertLeaderboardEntry(
   }
 
   if (existing) {
-    // Cast to access value safely
-    const existingRow = existing as { id: string; value: number };
+    const row = existing as { id: string; value: number };
 
     const existingIsBetter = ascending
-      ? existingRow.value <= payload.value
-      : existingRow.value >= payload.value;
+      ? row.value <= payload.value
+      : row.value >= payload.value;
 
     if (existingIsBetter) {
-      return { data: existingRow as unknown as LeaderboardEntryRow, error: null };
+      return { data: row as unknown as LeaderboardEntryRow, error: null };
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await rawClient
       .from("leaderboard_entries")
       .update({ value: payload.value, race_id: payload.race_id })
-      .eq("id", existingRow.id)
+      .eq("id", row.id)
       .select()
       .single();
 
@@ -129,10 +156,10 @@ export async function upsertLeaderboardEntry(
       return { data: null, error: error.message };
     }
 
-    return { data, error: null };
+    return { data: data as LeaderboardEntryRow, error: null };
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await rawClient
     .from("leaderboard_entries")
     .insert(payload)
     .select()
@@ -143,7 +170,7 @@ export async function upsertLeaderboardEntry(
     return { data: null, error: error.message };
   }
 
-  return { data, error: null };
+  return { data: data as LeaderboardEntryRow, error: null };
 }
 
 export async function submitRaceToLeaderboard(params: {
