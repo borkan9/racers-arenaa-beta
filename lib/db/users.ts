@@ -1,31 +1,26 @@
 // lib/db/users.ts
-//
-// All database queries for the users table.
-// Never write raw Supabase queries in API routes — always go through here.
-// This is the single place to update if the schema changes.
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { UserRow, UserInsert, UserUpdate } from "@/types/database.types";
-
-// ─── TYPES ────────────────────────────────────────────────────────────────────
 
 export interface DbResult<T> {
   data:  T | null;
   error: string | null;
 }
 
-// ─── READ ─────────────────────────────────────────────────────────────────────
+// Bypass Supabase strict generic inference
+type RawClient = {
+  from: (table: string) => any;
+};
 
-/**
- * Fetch a single user profile by id.
- * Returns null (not an error) when the user does not exist yet.
- */
-export async function getUserById(
-  id: string,
-): Promise<DbResult<UserRow>> {
-  const supabase = createSupabaseServerClient();
+function getRawClient(): RawClient {
+  return createSupabaseServerClient() as unknown as RawClient;
+}
 
-  const { data, error } = await supabase
+export async function getUserById(id: string): Promise<DbResult<UserRow>> {
+  const raw = getRawClient();
+
+  const { data, error } = await raw
     .from("users")
     .select("*")
     .eq("id", id)
@@ -36,19 +31,13 @@ export async function getUserById(
     return { data: null, error: error.message };
   }
 
-  return { data, error: null };
+  return { data: data as UserRow | null, error: null };
 }
 
-/**
- * Fetch a single user profile by username.
- * Used for public profile pages and search.
- */
-export async function getUserByUsername(
-  username: string,
-): Promise<DbResult<UserRow>> {
-  const supabase = createSupabaseServerClient();
+export async function getUserByUsername(username: string): Promise<DbResult<UserRow>> {
+  const raw = getRawClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await raw
     .from("users")
     .select("*")
     .eq("username", username)
@@ -59,21 +48,17 @@ export async function getUserByUsername(
     return { data: null, error: error.message };
   }
 
-  return { data, error: null };
+  return { data: data as UserRow | null, error: null };
 }
 
-/**
- * Search users by username prefix.
- * Used for the Explore screen search bar.
- */
 export async function searchUsers(
   query:  string,
   limit:  number = 20,
   offset: number = 0,
 ): Promise<DbResult<UserRow[]>> {
-  const supabase = createSupabaseServerClient();
+  const raw = getRawClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await raw
     .from("users")
     .select("*")
     .ilike("username", `%${query}%`)
@@ -85,22 +70,13 @@ export async function searchUsers(
     return { data: null, error: error.message };
   }
 
-  return { data: data ?? [], error: null };
+  return { data: (data ?? []) as UserRow[], error: null };
 }
 
-// ─── CREATE ───────────────────────────────────────────────────────────────────
+export async function createUser(payload: UserInsert): Promise<DbResult<UserRow>> {
+  const raw = getRawClient();
 
-/**
- * Insert a new user profile row.
- * Called once when a user signs up for the first time.
- * For OAuth sign-ins, the callback route uses upsertUser instead.
- */
-export async function createUser(
-  payload: UserInsert,
-): Promise<DbResult<UserRow>> {
-  const supabase = createSupabaseServerClient();
-
-  const { data, error } = await supabase
+  const { data, error } = await raw
     .from("users")
     .insert(payload)
     .select()
@@ -111,20 +87,13 @@ export async function createUser(
     return { data: null, error: error.message };
   }
 
-  return { data, error: null };
+  return { data: data as UserRow, error: null };
 }
 
-/**
- * Upsert a user profile row.
- * Safe to call multiple times — only creates a row if one doesn't exist.
- * Used by the OAuth callback to guarantee a profile row always exists.
- */
-export async function upsertUser(
-  payload: UserInsert,
-): Promise<DbResult<UserRow>> {
-  const supabase = createSupabaseServerClient();
+export async function upsertUser(payload: UserInsert): Promise<DbResult<UserRow>> {
+  const raw = getRawClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await raw
     .from("users")
     .upsert(payload, { onConflict: "id", ignoreDuplicates: false })
     .select()
@@ -135,23 +104,16 @@ export async function upsertUser(
     return { data: null, error: error.message };
   }
 
-  return { data, error: null };
+  return { data: data as UserRow, error: null };
 }
 
-// ─── UPDATE ───────────────────────────────────────────────────────────────────
-
-/**
- * Update a user profile by id.
- * Only updates the fields provided — all others remain unchanged.
- * The caller must ensure id matches the authenticated user (checked in API layer).
- */
 export async function updateUser(
   id:      string,
   payload: UserUpdate,
 ): Promise<DbResult<UserRow>> {
-  const supabase = createSupabaseServerClient();
+  const raw = getRawClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await raw
     .from("users")
     .update(payload)
     .eq("id", id)
@@ -163,23 +125,13 @@ export async function updateUser(
     return { data: null, error: error.message };
   }
 
-  return { data, error: null };
+  return { data: data as UserRow, error: null };
 }
 
-// ─── DELETE ───────────────────────────────────────────────────────────────────
+export async function deleteUser(id: string): Promise<DbResult<null>> {
+  const raw = getRawClient();
 
-/**
- * Hard-delete a user profile row.
- * The corresponding auth.users row must be deleted separately via
- * supabase.auth.admin.deleteUser() using the service role key.
- * Only call this from an admin-guarded route.
- */
-export async function deleteUser(
-  id: string,
-): Promise<DbResult<null>> {
-  const supabase = createSupabaseServerClient();
-
-  const { error } = await supabase
+  const { error } = await raw
     .from("users")
     .delete()
     .eq("id", id);
@@ -192,19 +144,13 @@ export async function deleteUser(
   return { data: null, error: null };
 }
 
-// ─── USERNAME AVAILABILITY ────────────────────────────────────────────────────
-
-/**
- * Returns true if the username is not already taken.
- * Used during profile setup and username change flows.
- */
 export async function isUsernameAvailable(
   username:       string,
   excludeUserId?: string,
 ): Promise<boolean> {
-  const supabase = createSupabaseServerClient();
+  const raw = getRawClient();
 
-  let query = supabase
+  let query = raw
     .from("users")
     .select("id")
     .eq("username", username);
@@ -217,8 +163,8 @@ export async function isUsernameAvailable(
 
   if (error) {
     console.error("[db/users] isUsernameAvailable error:", error.message);
-    return false; // Fail closed — treat as unavailable on error
+    return false;
   }
 
-  return data === null; // null means no row found → username is free
+  return data === null;
 }
