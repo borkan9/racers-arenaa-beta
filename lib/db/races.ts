@@ -1,16 +1,7 @@
 // lib/db/races.ts
-//
-// All database queries for the races table.
-// Never write raw Supabase queries in API routes — always go through here.
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type {
-  RaceRow,
-  RaceInsert,
-  RaceUpdate,
-} from "@/types/database.types";
-
-// ─── TYPES ────────────────────────────────────────────────────────────────────
+import type { RaceRow, RaceInsert, RaceUpdate } from "@/types/database.types";
 
 export interface DbResult<T> {
   data:  T | null;
@@ -23,18 +14,19 @@ export interface PaginatedResult<T> {
   error:  string | null;
 }
 
-// ─── CREATE ───────────────────────────────────────────────────────────────────
+// Raw client type to bypass Supabase generic inference
+type RawClient = {
+  from: (table: string) => any;
+};
 
-/**
- * Insert a completed race record.
- * Anti-cheat analysis must be run before calling this.
- */
-export async function createRace(
-  payload: RaceInsert,
-): Promise<DbResult<RaceRow>> {
-  const supabase = createSupabaseServerClient();
+function getRawClient() {
+  return createSupabaseServerClient() as unknown as RawClient;
+}
 
-  const { data, error } = await supabase
+export async function createRace(payload: RaceInsert): Promise<DbResult<RaceRow>> {
+  const raw = getRawClient();
+
+  const { data, error } = await raw
     .from("races")
     .insert(payload)
     .select()
@@ -45,21 +37,13 @@ export async function createRace(
     return { data: null, error: error.message };
   }
 
-  return { data, error: null };
+  return { data: data as RaceRow, error: null };
 }
 
-// ─── READ ─────────────────────────────────────────────────────────────────────
+export async function getRaceById(id: string): Promise<DbResult<RaceRow>> {
+  const raw = getRawClient();
 
-/**
- * Fetch a single race by id.
- * Returns null if the race does not exist.
- */
-export async function getRaceById(
-  id: string,
-): Promise<DbResult<RaceRow>> {
-  const supabase = createSupabaseServerClient();
-
-  const { data, error } = await supabase
+  const { data, error } = await raw
     .from("races")
     .select("*")
     .eq("id", id)
@@ -70,24 +54,19 @@ export async function getRaceById(
     return { data: null, error: error.message };
   }
 
-  return { data, error: null };
+  return { data: data as RaceRow | null, error: null };
 }
 
-/**
- * Fetch paginated race history for a specific user.
- * Excludes REMOVED races.
- * Respects is_private — only the owner sees their private runs.
- */
 export async function getRacesByUserId(
-  userId:        string,
-  requesterId:   string,
-  limit:         number = 20,
-  offset:        number = 0,
+  userId:      string,
+  requesterId: string,
+  limit:       number = 20,
+  offset:      number = 0,
 ): Promise<PaginatedResult<RaceRow>> {
-  const supabase    = createSupabaseServerClient();
-  const isOwner     = userId === requesterId;
+  const raw     = getRawClient();
+  const isOwner = userId === requesterId;
 
-  let query = supabase
+  let query = raw
     .from("races")
     .select("*", { count: "exact" })
     .eq("user_id", userId)
@@ -95,7 +74,6 @@ export async function getRacesByUserId(
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
-  // Non-owners cannot see private runs
   if (!isOwner) {
     query = query.eq("is_private", false);
   }
@@ -107,20 +85,16 @@ export async function getRacesByUserId(
     return { data: null, count: null, error: error.message };
   }
 
-  return { data: data ?? [], count, error: null };
+  return { data: (data ?? []) as RaceRow[], count, error: null };
 }
 
-/**
- * Fetch all flagged races pending admin review.
- * Admin-only — call only from admin-guarded routes.
- */
 export async function getFlaggedRaces(
   limit:  number = 50,
   offset: number = 0,
 ): Promise<PaginatedResult<RaceRow>> {
-  const supabase = createSupabaseServerClient();
+  const raw = getRawClient();
 
-  const { data, count, error } = await supabase
+  const { data, count, error } = await raw
     .from("races")
     .select("*", { count: "exact" })
     .eq("flagged", true)
@@ -134,22 +108,16 @@ export async function getFlaggedRaces(
     return { data: null, count: null, error: error.message };
   }
 
-  return { data: data ?? [], count, error: null };
+  return { data: (data ?? []) as RaceRow[], count, error: null };
 }
 
-// ─── UPDATE ───────────────────────────────────────────────────────────────────
-
-/**
- * Partially update a race record.
- * Used by the admin panel to approve or remove flagged races.
- */
 export async function updateRace(
   id:      string,
   payload: RaceUpdate,
 ): Promise<DbResult<RaceRow>> {
-  const supabase = createSupabaseServerClient();
+  const raw = getRawClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await raw
     .from("races")
     .update(payload)
     .eq("id", id)
@@ -161,13 +129,9 @@ export async function updateRace(
     return { data: null, error: error.message };
   }
 
-  return { data, error: null };
+  return { data: data as RaceRow, error: null };
 }
 
-/**
- * Mark a race as reviewed and approved.
- * Clears the flagged state and sets status to FINISHED.
- */
 export async function approveRace(
   id:   string,
   note: string = "",
@@ -180,10 +144,6 @@ export async function approveRace(
   });
 }
 
-/**
- * Mark a race as reviewed and removed.
- * Keeps the row for audit purposes but excludes it from all queries.
- */
 export async function removeRace(
   id:   string,
   note: string = "",
@@ -195,21 +155,15 @@ export async function removeRace(
   });
 }
 
-// ─── USER BEST STATS ──────────────────────────────────────────────────────────
-
-/**
- * Returns the user's personal best stats across all finished races.
- * Used to populate the profile screen leaderboard stats.
- */
 export async function getUserBestStats(userId: string): Promise<{
   topSpeed:   number | null;
   bestTimeMs: number | null;
   totalRaces: number;
   error:      string | null;
 }> {
-  const supabase = createSupabaseServerClient();
+  const raw = getRawClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await raw
     .from("races")
     .select("max_speed, duration_ms")
     .eq("user_id", userId)
@@ -225,18 +179,10 @@ export async function getUserBestStats(userId: string): Promise<{
     return { topSpeed: null, bestTimeMs: null, totalRaces: 0, error: null };
   }
 
-  const topSpeed = Math.max(...data.map((r) => r.max_speed));
-
-  const times    = data
-    .map((r) => r.duration_ms)
-    .filter((t): t is number => t !== null);
-
+  const rows      = data as { max_speed: number; duration_ms: number | null }[];
+  const topSpeed  = Math.max(...rows.map((r) => r.max_speed));
+  const times     = rows.map((r) => r.duration_ms).filter((t): t is number => t !== null);
   const bestTimeMs = times.length > 0 ? Math.min(...times) : null;
 
-  return {
-    topSpeed,
-    bestTimeMs,
-    totalRaces: data.length,
-    error:      null,
-  };
+  return { topSpeed, bestTimeMs, totalRaces: rows.length, error: null };
 }
