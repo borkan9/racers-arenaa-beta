@@ -132,7 +132,7 @@ export function validate<T>(
   const result = schema.safeParse(input);
 
   if (!result.success) {
-    const firstError = result.error.errors[0];
+    const firstError = result.error.issues[0];
     const message    = firstError
       ? `${firstError.path.join(".")}: ${firstError.message}`
       : "Invalid input.";
