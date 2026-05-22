@@ -24,6 +24,14 @@ export interface RankedEntry extends LeaderboardEntryWithUser {
   rank: number;
 }
 
+type RawClient = {
+  from: (table: string) => any;
+};
+
+async function getRawClient(): Promise<RawClient> {
+  return createSupabaseServerClient() as unknown as RawClient;
+}
+
 export function getWeekStart(date: Date = new Date()): string {
   const d    = new Date(date);
   const day  = d.getUTCDay();
@@ -38,11 +46,11 @@ export async function getWeeklyLeaderboard(
   weekStart?: string,
   limit:      number = 50,
 ): Promise<DbResult<RankedEntry[]>> {
-  const supabase  = createSupabaseServerClient();
+  const raw       = await getRawClient();
   const week      = weekStart ?? getWeekStart();
   const ascending = boardType === "BEST_TIME";
 
-  const { data, error } = await supabase
+  const { data, error } = await raw
     .from("leaderboard_entries")
     .select(`*, users ( id, username, avatar )`)
     .eq("week_start", week)
@@ -67,10 +75,10 @@ export async function getUserWeeklyEntry(
   boardType:  BoardType,
   weekStart?: string,
 ): Promise<DbResult<LeaderboardEntryRow>> {
-  const supabase = createSupabaseServerClient();
-  const week     = weekStart ?? getWeekStart();
+  const raw  = await getRawClient();
+  const week = weekStart ?? getWeekStart();
 
-  const { data, error } = await supabase
+  const { data, error } = await raw
     .from("leaderboard_entries")
     .select("*")
     .eq("user_id", userId)
@@ -83,44 +91,16 @@ export async function getUserWeeklyEntry(
     return { data: null, error: error.message };
   }
 
-  return { data, error: null };
+  return { data: data as LeaderboardEntryRow | null, error: null };
 }
 
 export async function upsertLeaderboardEntry(
   payload: LeaderboardEntryInsert,
 ): Promise<DbResult<LeaderboardEntryRow>> {
-  const supabase  = createSupabaseServerClient();
+  const raw       = await getRawClient();
   const ascending = payload.board_type === "BEST_TIME";
 
-  // Use raw client to bypass strict generic inference
-  const rawClient = supabase as unknown as {
-    from: (table: string) => {
-      select: (cols: string) => {
-        eq:         (col: string, val: unknown) => {
-          eq:         (col: string, val: unknown) => {
-            eq:         (col: string, val: unknown) => {
-              maybeSingle: () => Promise<{ data: unknown; error: { message: string } | null }>;
-            };
-          };
-        };
-      };
-      update: (vals: Record<string, unknown>) => {
-        eq: (col: string, val: unknown) => {
-          select: () => {
-            single: () => Promise<{ data: unknown; error: { message: string } | null }>;
-          };
-        };
-      };
-      insert: (vals: unknown) => {
-        select: () => {
-          single: () => Promise<{ data: unknown; error: { message: string } | null }>;
-        };
-      };
-    };
-  };
-
-  // Check existing
-  const { data: existing, error: fetchError } = await rawClient
+  const { data: existing, error: fetchError } = await raw
     .from("leaderboard_entries")
     .select("id, value")
     .eq("user_id",    payload.user_id)
@@ -144,7 +124,7 @@ export async function upsertLeaderboardEntry(
       return { data: row as unknown as LeaderboardEntryRow, error: null };
     }
 
-    const { data, error } = await rawClient
+    const { data, error } = await raw
       .from("leaderboard_entries")
       .update({ value: payload.value, race_id: payload.race_id })
       .eq("id", row.id)
@@ -159,7 +139,7 @@ export async function upsertLeaderboardEntry(
     return { data: data as LeaderboardEntryRow, error: null };
   }
 
-  const { data, error } = await rawClient
+  const { data, error } = await raw
     .from("leaderboard_entries")
     .insert(payload)
     .select()

@@ -1,6 +1,8 @@
-import { NextResponse }          from "next/server";
-import { getSession }            from "@/lib/auth/getSession";
-import type { User }             from "@supabase/supabase-js";
+// lib/auth/requireAuth.ts
+
+import { NextResponse }  from "next/server";
+import { getSession }    from "@/lib/auth/getSession";
+import type { User }     from "@supabase/supabase-js";
 
 export interface AuthGuardSuccess {
   ok:        true;
@@ -43,9 +45,9 @@ export async function requireAdmin(): Promise<AuthGuardResult> {
   if (!authGuard.ok) return authGuard;
 
   const { createSupabaseServerClient } = await import("@/lib/supabase/server");
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from("users")
     .select("role")
     .eq("id", authGuard.userId)

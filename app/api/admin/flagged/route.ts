@@ -1,24 +1,14 @@
 // app/api/admin/flagged/route.ts
-//
-// GET  /api/admin/flagged              → list all flagged races pending review
-// POST /api/admin/flagged              → approve or remove a flagged race
-//
-// Both routes are admin-only.
-// requireAdmin() verifies session AND checks role = "admin" in the users table.
 
-import { NextRequest, NextResponse }        from "next/server";
-import { requireAdmin }                      from "@/lib/auth/requireAuth";
+import { NextRequest, NextResponse }                from "next/server";
+import { requireAdmin }                              from "@/lib/auth/requireAuth";
 import { getFlaggedRaces, approveRace, removeRace } from "@/lib/db/races";
-import { validate, AdminRaceActionSchema }   from "@/lib/validators/race.schema";
-
-// ─── GET /api/admin/flagged ───────────────────────────────────────────────────
+import { validate, AdminRaceActionSchema }           from "@/lib/validators/race.schema";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  // 1. Admin guard
   const guard = await requireAdmin();
   if (!guard.ok) return guard.response;
 
-  // 2. Parse pagination params
   const { searchParams } = new URL(request.url);
   const limit  = Math.min(Number(searchParams.get("limit")  ?? 50), 100);
   const offset = Math.max(Number(searchParams.get("offset") ?? 0),  0);
@@ -30,7 +20,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // 3. Fetch flagged races
   const { data: races, count, error } = await getFlaggedRaces(limit, offset);
 
   if (error) {
@@ -41,24 +30,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   return NextResponse.json(
-    {
-      races:  races  ?? [],
-      count:  count  ?? 0,
-      limit,
-      offset,
-    },
+    { races: races ?? [], count: count ?? 0, limit, offset },
     { status: 200 },
   );
 }
 
-// ─── POST /api/admin/flagged ──────────────────────────────────────────────────
-
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  // 1. Admin guard
   const guard = await requireAdmin();
   if (!guard.ok) return guard.response;
 
-  // 2. Parse body
   let body: unknown;
   try {
     body = await request.json();
@@ -69,7 +49,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // 3. Validate input
   const result = validate(AdminRaceActionSchema, body);
   if (!result.success) {
     return NextResponse.json(
@@ -80,7 +59,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { race_id, action, note } = result.data;
 
-  // 4. Execute action
   if (action === "approve") {
     const { data: race, error } = await approveRace(race_id, note);
 
@@ -96,10 +74,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
 
     return NextResponse.json(
-      {
-        race,
-        message: `Race ${race_id} approved and restored to FINISHED status.`,
-      },
+      { race, message: `Race ${race_id} approved and restored to FINISHED status.` },
       { status: 200 },
     );
   }
@@ -119,33 +94,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
 
     return NextResponse.json(
-      {
-        race,
-        message: `Race ${race_id} removed from all public views.`,
-      },
+      { race, message: `Race ${race_id} removed from all public views.` },
       { status: 200 },
     );
   }
 
-  // Should never reach here — Zod enum guards this
-  return NextResponse.json(
-    { error: "Unknown action." },
-    { status: 400 },
-  );
+  return NextResponse.json({ error: "Unknown action." }, { status: 400 });
 }
 
-// ─── METHOD GUARDS ────────────────────────────────────────────────────────────
-
 export async function PUT(): Promise<NextResponse> {
-  return NextResponse.json(
-    { error: "Method not allowed." },
-    { status: 405 },
-  );
+  return NextResponse.json({ error: "Method not allowed." }, { status: 405 });
 }
 
 export async function DELETE(): Promise<NextResponse> {
-  return NextResponse.json(
-    { error: "Method not allowed." },
-    { status: 405 },
-  );
+  return NextResponse.json({ error: "Method not allowed." }, { status: 405 });
 }

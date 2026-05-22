@@ -14,17 +14,16 @@ export interface PaginatedResult<T> {
   error:  string | null;
 }
 
-// Raw client type to bypass Supabase generic inference
 type RawClient = {
   from: (table: string) => any;
 };
 
-function getRawClient() {
+async function getRawClient(): Promise<RawClient> {
   return createSupabaseServerClient() as unknown as RawClient;
 }
 
 export async function createRace(payload: RaceInsert): Promise<DbResult<RaceRow>> {
-  const raw = getRawClient();
+  const raw = await getRawClient();
 
   const { data, error } = await raw
     .from("races")
@@ -41,7 +40,7 @@ export async function createRace(payload: RaceInsert): Promise<DbResult<RaceRow>
 }
 
 export async function getRaceById(id: string): Promise<DbResult<RaceRow>> {
-  const raw = getRawClient();
+  const raw = await getRawClient();
 
   const { data, error } = await raw
     .from("races")
@@ -63,7 +62,7 @@ export async function getRacesByUserId(
   limit:       number = 20,
   offset:      number = 0,
 ): Promise<PaginatedResult<RaceRow>> {
-  const raw     = getRawClient();
+  const raw     = await getRawClient();
   const isOwner = userId === requesterId;
 
   let query = raw
@@ -92,7 +91,7 @@ export async function getFlaggedRaces(
   limit:  number = 50,
   offset: number = 0,
 ): Promise<PaginatedResult<RaceRow>> {
-  const raw = getRawClient();
+  const raw = await getRawClient();
 
   const { data, count, error } = await raw
     .from("races")
@@ -115,7 +114,7 @@ export async function updateRace(
   id:      string,
   payload: RaceUpdate,
 ): Promise<DbResult<RaceRow>> {
-  const raw = getRawClient();
+  const raw = await getRawClient();
 
   const { data, error } = await raw
     .from("races")
@@ -161,7 +160,7 @@ export async function getUserBestStats(userId: string): Promise<{
   totalRaces: number;
   error:      string | null;
 }> {
-  const raw = getRawClient();
+  const raw = await getRawClient();
 
   const { data, error } = await raw
     .from("races")
@@ -179,9 +178,9 @@ export async function getUserBestStats(userId: string): Promise<{
     return { topSpeed: null, bestTimeMs: null, totalRaces: 0, error: null };
   }
 
-  const rows      = data as { max_speed: number; duration_ms: number | null }[];
-  const topSpeed  = Math.max(...rows.map((r) => r.max_speed));
-  const times     = rows.map((r) => r.duration_ms).filter((t): t is number => t !== null);
+  const rows       = data as { max_speed: number; duration_ms: number | null }[];
+  const topSpeed   = Math.max(...rows.map((r) => r.max_speed));
+  const times      = rows.map((r) => r.duration_ms).filter((t): t is number => t !== null);
   const bestTimeMs = times.length > 0 ? Math.min(...times) : null;
 
   return { topSpeed, bestTimeMs, totalRaces: rows.length, error: null };

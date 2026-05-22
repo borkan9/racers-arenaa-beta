@@ -8,20 +8,15 @@ import { z }                           from "zod";
 
 const UuidSchema = z.string().uuid("Invalid race ID format.");
 
-// ─── GET /api/races/[id] ──────────────────────────────────────────────────────
-
 export async function GET(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },  // ← Promise هنا
+  { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const { id } = await params;  // ← await هنا
+  const { id } = await params;
 
   const parsed = UuidSchema.safeParse(id);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Invalid race ID." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Invalid race ID." }, { status: 400 });
   }
 
   const raceId = parsed.data;
@@ -29,17 +24,11 @@ export async function GET(
   const { data: race, error } = await getRaceById(raceId);
 
   if (error) {
-    return NextResponse.json(
-      { error: "Failed to fetch race." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch race." }, { status: 500 });
   }
 
   if (!race) {
-    return NextResponse.json(
-      { error: "Race not found." },
-      { status: 404 },
-    );
+    return NextResponse.json({ error: "Race not found." }, { status: 404 });
   }
 
   if (race.status === "REMOVED") {
@@ -49,8 +38,9 @@ export async function GET(
     }
 
     const { createSupabaseServerClient } = await import("@/lib/supabase/server");
-    const supabase  = createSupabaseServerClient();
-    const { data }  = await supabase
+    const supabase  = await createSupabaseServerClient();
+    const rawClient = supabase as unknown as { from: (t: string) => any };
+    const { data }  = await rawClient
       .from("users")
       .select("role")
       .eq("id", user.id)
@@ -95,23 +85,18 @@ export async function GET(
   );
 }
 
-// ─── DELETE /api/races/[id] ───────────────────────────────────────────────────
-
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },  // ← Promise هنا
+  { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   const guard = await requireAdmin();
   if (!guard.ok) return guard.response;
 
-  const { id } = await params;  // ← await هنا
+  const { id } = await params;
 
   const parsed = UuidSchema.safeParse(id);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Invalid race ID." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Invalid race ID." }, { status: 400 });
   }
 
   const raceId = parsed.data;
@@ -119,17 +104,11 @@ export async function DELETE(
   const { data: existing, error: fetchError } = await getRaceById(raceId);
 
   if (fetchError) {
-    return NextResponse.json(
-      { error: "Failed to fetch race." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to fetch race." }, { status: 500 });
   }
 
   if (!existing) {
-    return NextResponse.json(
-      { error: "Race not found." },
-      { status: 404 },
-    );
+    return NextResponse.json({ error: "Race not found." }, { status: 404 });
   }
 
   const { data: removed, error: removeError } = await updateRace(raceId, {
@@ -139,24 +118,16 @@ export async function DELETE(
   });
 
   if (removeError || !removed) {
-    return NextResponse.json(
-      { error: "Failed to delete race." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Failed to delete race." }, { status: 500 });
   }
 
   console.log(`[api/races/${raceId}] Soft-deleted by admin ${guard.userId}.`);
 
   return NextResponse.json(
-    {
-      message: `Race ${raceId} has been removed.`,
-      race:    removed,
-    },
+    { message: `Race ${raceId} has been removed.`, race: removed },
     { status: 200 },
   );
 }
-
-// ─── METHOD GUARDS ────────────────────────────────────────────────────────────
 
 export async function POST(): Promise<NextResponse> {
   return NextResponse.json({ error: "Method not allowed." }, { status: 405 });

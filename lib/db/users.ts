@@ -8,17 +8,16 @@ export interface DbResult<T> {
   error: string | null;
 }
 
-// Bypass Supabase strict generic inference
 type RawClient = {
   from: (table: string) => any;
 };
 
-function getRawClient(): RawClient {
+async function getRawClient(): Promise<RawClient> {
   return createSupabaseServerClient() as unknown as RawClient;
 }
 
 export async function getUserById(id: string): Promise<DbResult<UserRow>> {
-  const raw = getRawClient();
+  const raw = await getRawClient();
 
   const { data, error } = await raw
     .from("users")
@@ -35,7 +34,7 @@ export async function getUserById(id: string): Promise<DbResult<UserRow>> {
 }
 
 export async function getUserByUsername(username: string): Promise<DbResult<UserRow>> {
-  const raw = getRawClient();
+  const raw = await getRawClient();
 
   const { data, error } = await raw
     .from("users")
@@ -56,7 +55,7 @@ export async function searchUsers(
   limit:  number = 20,
   offset: number = 0,
 ): Promise<DbResult<UserRow[]>> {
-  const raw = getRawClient();
+  const raw = await getRawClient();
 
   const { data, error } = await raw
     .from("users")
@@ -74,7 +73,7 @@ export async function searchUsers(
 }
 
 export async function createUser(payload: UserInsert): Promise<DbResult<UserRow>> {
-  const raw = getRawClient();
+  const raw = await getRawClient();
 
   const { data, error } = await raw
     .from("users")
@@ -91,7 +90,7 @@ export async function createUser(payload: UserInsert): Promise<DbResult<UserRow>
 }
 
 export async function upsertUser(payload: UserInsert): Promise<DbResult<UserRow>> {
-  const raw = getRawClient();
+  const raw = await getRawClient();
 
   const { data, error } = await raw
     .from("users")
@@ -111,7 +110,7 @@ export async function updateUser(
   id:      string,
   payload: UserUpdate,
 ): Promise<DbResult<UserRow>> {
-  const raw = getRawClient();
+  const raw = await getRawClient();
 
   const { data, error } = await raw
     .from("users")
@@ -129,7 +128,7 @@ export async function updateUser(
 }
 
 export async function deleteUser(id: string): Promise<DbResult<null>> {
-  const raw = getRawClient();
+  const raw = await getRawClient();
 
   const { error } = await raw
     .from("users")
@@ -148,7 +147,7 @@ export async function isUsernameAvailable(
   username:       string,
   excludeUserId?: string,
 ): Promise<boolean> {
-  const raw = getRawClient();
+  const raw = await getRawClient();
 
   let query = raw
     .from("users")

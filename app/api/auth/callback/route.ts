@@ -23,7 +23,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.redirect(`${origin}/auth/signin?error=missing_code`);
   }
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
 
   const { data, error: exchangeError } =
     await supabase.auth.exchangeCodeForSession(code);
@@ -43,17 +43,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const avatar =
     (user.user_metadata?.avatar_url as string | undefined) ?? null;
 
-  // Use type assertion to bypass Supabase generic inference issue
-  const supabaseAny = supabase as unknown as {
-    from: (table: string) => {
-      upsert: (
-        data: Record<string, unknown>,
-        options: Record<string, unknown>,
-      ) => Promise<{ error: { message: string } | null }>;
-    };
+  const rawClient = supabase as unknown as {
+    from: (table: string) => any;
   };
 
-  const { error: upsertError } = await supabaseAny
+  const { error: upsertError } = await rawClient
     .from("users")
     .upsert(
       { id: user.id, username, avatar, bio: null },
