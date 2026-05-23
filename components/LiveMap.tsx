@@ -1,221 +1,230 @@
 // components/LiveMap.tsx
 
-import React from "react";
-import { C, FONT } from "@/lib/constants";
-import type { RoutePoint } from "@/types";
+"use client";
 
-// ─── TYPES ────────────────────────────────────────────────────────────────────
+import React, { useEffect, useRef } from "react";
+import type { RoutePoint }           from "@/types";
 
 interface LiveMapProps {
-  /** Whether a race is actively running (shows LIVE badge + pulse). */
   active:      boolean;
-  /** Ordered array of SVG-space route points recorded so far. */
   routePoints: RoutePoint[];
-  /** Optional inline style for the outer container div. */
   style?:      React.CSSProperties;
 }
 
-// ─── SVG VIEWPORT ────────────────────────────────────────────────────────────
-
-const VW = 400;
-const VH = 300;
-
-// ─── COMPONENT ────────────────────────────────────────────────────────────────
-
 export function LiveMap({ active, routePoints, style }: LiveMapProps) {
-  const last = routePoints[routePoints.length - 1] ?? null;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef       = useRef<any>(null);
+  const sourceRef    = useRef<boolean>(false);
+  const markerRef    = useRef<any>(null);
 
-  // Build the SVG polyline points string once
-  const polylinePoints = routePoints
-    .map((p) => `${p.x},${p.y}`)
-    .join(" ");
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+
+    const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+    if (!token) return;
+
+    import("mapbox-gl").then((mapboxgl) => {
+      const mapboxglDefault = mapboxgl.default ?? mapboxgl;
+      mapboxglDefault.accessToken = token;
+
+      const map = new mapboxglDefault.Map({
+        container: containerRef.current!,
+        style:     "mapbox://styles/mapbox/navigation-night-v1", // Apple Maps-like dark
+        center:    [31.2357, 30.0444], // Cairo default
+        zoom:      15,
+        pitch:     45,
+        bearing:   0,
+        antialias: true,
+      });
+
+      map.on("load", () => {
+        // Glow underneath route
+        map.addSource("route-glow", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+        map.addLayer({
+          id:     "route-glow-layer",
+          type:   "line",
+          source: "route-glow",
+          paint: {
+            "line-color":   "#E8350A",
+            "line-width":   16,
+            "line-opacity": 0.15,
+            "line-blur":    8,
+          },
+          layout: { "line-cap": "round", "line-join": "round" },
+        });
+
+        // Main route line
+        map.addSource("route", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+        map.addLayer({
+          id:     "route-line",
+          type:   "line",
+          source: "route",
+          paint: {
+            "line-color":   "#E8350A",
+            "line-width":   4,
+            "line-opacity": 0.95,
+          },
+          layout: { "line-cap": "round", "line-join": "round" },
+        });
+
+        // Start marker (green dot)
+        const startEl = document.createElement("div");
+        startEl.style.cssText = `
+          width: 14px; height: 14px;
+          background: #22C55E;
+          border: 3px solid white;
+          border-radius: 50%;
+          box-shadow: 0 0 10px #22C55E80;
+        `;
+        new mapboxglDefault.Marker({ element: startEl });
+
+        sourceRef.current = true;
+      });
+
+      mapRef.current = map;
+    });
+
+    return () => {
+      mapRef.current?.remove();
+      mapRef.current   = null;
+      sourceRef.current = false;
+    };
+  }, []);
+
+  // Update route when points change
+  useEffect(() => {
+    if (!mapRef.current || !sourceRef.current) return;
+
+    // Only use points with real GPS coords
+    const gpsPoints = routePoints.filter(
+      (p) => p.lat !== undefined && p.lng !== undefined,
+    );
+
+    if (gpsPoints.length < 2) return;
+
+    const coords = gpsPoints.map((p) => [p.lng!, p.lat!]);
+
+    const geojson = {
+      type: "FeatureCollection" as const,
+      features: [{
+        type:       "Feature" as const,
+        geometry:   { type: "LineString" as const, coordinates: coords },
+        properties: {},
+      }],
+    };
+
+    const routeSource = mapRef.current.getSource("route");
+    const glowSource  = mapRef.current.getSource("route-glow");
+
+    if (routeSource) routeSource.setData(geojson);
+    if (glowSource)  glowSource.setData(geojson);
+
+    // Move live position marker
+    const last = gpsPoints[gpsPoints.length - 1];
+    if (!last) return;
+
+    if (markerRef.current) {
+      markerRef.current.setLngLat([last.lng!, last.lat!]);
+    } else {
+      import("mapbox-gl").then((mapboxgl) => {
+        const mapboxglDefault = mapboxgl.default ?? mapboxgl;
+
+        const el = document.createElement("div");
+        el.style.cssText = `
+          width: 20px; height: 20px;
+          background: #E8350A;
+          border: 3px solid white;
+          border-radius: 50%;
+          box-shadow: 0 0 16px #E8350A, 0 0 32px #E8350A60;
+          animation: pulse 1.5s ease-in-out infinite;
+        `;
+
+        markerRef.current = new mapboxglDefault.Marker({ element: el })
+          .setLngLat([last.lng!, last.lat!])
+          .addTo(mapRef.current);
+      });
+    }
+
+    // Follow the car smoothly
+    if (active) {
+      mapRef.current.easeTo({
+        center:   [last.lng!, last.lat!],
+        zoom:     17,
+        pitch:    60,
+        bearing:  calculateBearing(gpsPoints),
+        duration: 800,
+      });
+    }
+  }, [routePoints, active]);
 
   return (
-    <div
-      style={{
-        position:     "relative",
-        width:        "100%",
-        height:       "100%",
-        borderRadius: 12,
-        overflow:     "hidden",
-        background:   "#0D1117",
-        ...style,
-      }}
-    >
-      <svg
-        width="100%"
-        height="100%"
-        viewBox={`0 0 ${VW} ${VH}`}
-        preserveAspectRatio="xMidYMid slice"
-      >
-        {/* ── Grid lines ── */}
-        <GridLines />
+    <div style={{ position: "relative", width: "100%", height: "100%", ...style }}>
+      <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
 
-        {/* ── Road surface ── */}
-        <RoadSurface />
-
-        {/* ── Recorded route line ── */}
-        {routePoints.length > 1 && (
-          <polyline
-            points={polylinePoints}
-            fill="none"
-            stroke={C.accent}
-            strokeWidth="3"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{
-              strokeDasharray:  800,
-              strokeDashoffset: 0,
-              animation:        "track-draw 1.5s ease forwards",
-            }}
-          />
-        )}
-
-        {/* ── Start marker ── */}
-        <StartMarker />
-
-        {/* ── Live position pulse + dot ── */}
-        {last !== null && (
-          <LiveDot cx={last.x} cy={last.y} active={active} />
-        )}
-      </svg>
-
-      {/* ── LIVE badge overlay ── */}
-      {active && <LiveBadge />}
-
-      {/* ── Footer note ── */}
-      <MapFooter />
-    </div>
-  );
-}
-
-// ─── SUB-COMPONENTS ───────────────────────────────────────────────────────────
-
-function GridLines() {
-  const hLines = Array.from({ length: 12 }, (_, i) => i * 28);
-  const vLines = Array.from({ length: 16 }, (_, i) => i * 28);
-
-  return (
-    <g>
-      {hLines.map((y) => (
-        <line key={`h${y}`} x1="0" y1={y} x2={VW} y2={y} stroke="#161D26" strokeWidth="0.8" />
-      ))}
-      {vLines.map((x) => (
-        <line key={`v${x}`} x1={x} y1="0" x2={x} y2={VH} stroke="#161D26" strokeWidth="0.8" />
-      ))}
-    </g>
-  );
-}
-
-function RoadSurface() {
-  const path = "M40 260 Q80 240 120 220 Q180 190 220 160 Q270 120 310 100 Q350 80 380 60";
-  return (
-    <g>
-      {/* Road base shadow */}
-      <path d={path} fill="none" stroke="#1E2840" strokeWidth="18" strokeLinecap="round" />
-      {/* Road surface */}
-      <path d={path} fill="none" stroke="#243050" strokeWidth="14" strokeLinecap="round" />
-    </g>
-  );
-}
-
-function StartMarker() {
-  return (
-    <g>
-      <circle cx="40" cy="260" r="7" fill={C.green} opacity="0.9" />
-      <circle cx="40" cy="260" r="4" fill={C.green} />
-      <text
-        x="52"
-        y="264"
-        fill={C.green}
-        fontSize="8"
-        fontFamily={FONT.body}
-        fontWeight="700"
-      >
-        START
-      </text>
-    </g>
-  );
-}
-
-interface LiveDotProps {
-  cx:     number;
-  cy:     number;
-  active: boolean;
-}
-
-function LiveDot({ cx, cy, active }: LiveDotProps) {
-  return (
-    <g>
+      {/* LIVE badge */}
       {active && (
-        <circle
-          cx={cx}
-          cy={cy}
-          r="10"
-          fill={C.accent}
-          opacity="0.25"
-          style={{ animation: "pulse-ring 1.5s ease-in-out infinite" }}
-        />
+        <div style={{
+          position:     "absolute",
+          top:          10,
+          right:        10,
+          background:   "rgba(232,53,10,0.15)",
+          border:       "1px solid #E8350A",
+          borderRadius: 6,
+          padding:      "3px 10px",
+          display:      "flex",
+          alignItems:   "center",
+          gap:          6,
+          backdropFilter: "blur(8px)",
+        }}>
+          <div style={{
+            width:        6,
+            height:       6,
+            borderRadius: "50%",
+            background:   "#E8350A",
+            animation:    "blink 1s step-end infinite",
+          }} />
+          <span style={{
+            fontFamily:    "'Rajdhani', sans-serif",
+            fontWeight:    700,
+            fontSize:      11,
+            color:         "#E8350A",
+            letterSpacing: 2,
+          }}>
+            LIVE
+          </span>
+        </div>
       )}
-      <circle cx={cx} cy={cy} r="5" fill={C.accent} />
-    </g>
-  );
-}
 
-function LiveBadge() {
-  return (
-    <div
-      style={{
-        position:    "absolute",
-        top:         10,
-        right:       10,
-        background:  `${C.accent}20`,
-        border:      `1px solid ${C.accent}`,
-        borderRadius: 6,
-        padding:     "3px 10px",
-        display:     "flex",
-        alignItems:  "center",
-        gap:         6,
-      }}
-    >
-      <div
-        style={{
-          width:        6,
-          height:       6,
-          borderRadius: "50%",
-          background:   C.accent,
-          animation:    "blink 1s step-end infinite",
-        }}
-      />
-      <span
-        style={{
-          fontFamily:    FONT.body,
-          fontWeight:    700,
-          fontSize:      11,
-          color:         C.accent,
-          letterSpacing: 2,
-        }}
-      >
-        LIVE
-      </span>
+      {/* Mapbox CSS */}
+      <style>{`
+        .mapboxgl-ctrl-bottom-left,
+        .mapboxgl-ctrl-bottom-right,
+        .mapboxgl-ctrl-logo { display: none !important; }
+      `}</style>
     </div>
   );
 }
 
-function MapFooter() {
-  return (
-    <div
-      style={{
-        position:      "absolute",
-        bottom:        10,
-        left:          10,
-        fontSize:      9,
-        color:         C.muted,
-        fontFamily:    FONT.mono,
-        letterSpacing: 1,
-      }}
-    >
-      MAP SIMULATION MODE
-    </div>
-  );
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+
+function calculateBearing(points: RoutePoint[]): number {
+  if (points.length < 2) return 0;
+  const prev = points[points.length - 2];
+  const curr = points[points.length - 1];
+  if (!prev.lat || !prev.lng || !curr.lat || !curr.lng) return 0;
+
+  const dLng  = (curr.lng! - prev.lng!) * (Math.PI / 180);
+  const lat1  = prev.lat! * (Math.PI / 180);
+  const lat2  = curr.lat! * (Math.PI / 180);
+  const y     = Math.sin(dLng) * Math.cos(lat2);
+  const x     = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  const angle = Math.atan2(y, x) * (180 / Math.PI);
+
+  return (angle + 360) % 360;
 }
