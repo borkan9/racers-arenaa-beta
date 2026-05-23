@@ -3,6 +3,7 @@
 "use client";
 
 import React, { useEffect, useRef } from "react";
+import mapboxgl                      from "mapbox-gl";
 import type { RoutePoint }           from "@/types";
 
 interface LiveMapProps {
@@ -13,9 +14,9 @@ interface LiveMapProps {
 
 export function LiveMap({ active, routePoints, style }: LiveMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<any>(null);
-  const sourceRef    = useRef<boolean>(false);
-  const markerRef    = useRef<any>(null);
+  const mapRef       = useRef<mapboxgl.Map | null>(null);
+  const sourceReady  = useRef(false);
+  const markerRef    = useRef<mapboxgl.Marker | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -23,85 +24,70 @@ export function LiveMap({ active, routePoints, style }: LiveMapProps) {
     const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
     if (!token) return;
 
-    import("mapbox-gl").then((mapboxgl) => {
-      const mapboxglDefault = mapboxgl.default ?? mapboxgl;
-      mapboxglDefault.accessToken = token;
+    mapboxgl.accessToken = token;
 
-      const map = new mapboxglDefault.Map({
-        container: containerRef.current!,
-        style:     "mapbox://styles/mapbox/navigation-night-v1", // Apple Maps-like dark
-        center:    [31.2357, 30.0444], // Cairo default
-        zoom:      15,
-        pitch:     45,
-        bearing:   0,
-        antialias: true,
-      });
-
-      map.on("load", () => {
-        // Glow underneath route
-        map.addSource("route-glow", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-        });
-        map.addLayer({
-          id:     "route-glow-layer",
-          type:   "line",
-          source: "route-glow",
-          paint: {
-            "line-color":   "#E8350A",
-            "line-width":   16,
-            "line-opacity": 0.15,
-            "line-blur":    8,
-          },
-          layout: { "line-cap": "round", "line-join": "round" },
-        });
-
-        // Main route line
-        map.addSource("route", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-        });
-        map.addLayer({
-          id:     "route-line",
-          type:   "line",
-          source: "route",
-          paint: {
-            "line-color":   "#E8350A",
-            "line-width":   4,
-            "line-opacity": 0.95,
-          },
-          layout: { "line-cap": "round", "line-join": "round" },
-        });
-
-        // Start marker (green dot)
-        const startEl = document.createElement("div");
-        startEl.style.cssText = `
-          width: 14px; height: 14px;
-          background: #22C55E;
-          border: 3px solid white;
-          border-radius: 50%;
-          box-shadow: 0 0 10px #22C55E80;
-        `;
-        new mapboxglDefault.Marker({ element: startEl });
-
-        sourceRef.current = true;
-      });
-
-      mapRef.current = map;
+    const map = new mapboxgl.Map({
+      container: containerRef.current,
+      style:     "mapbox://styles/mapbox/navigation-night-v1",
+      center:    [31.2357, 30.0444],
+      zoom:      15,
+      pitch:     45,
+      bearing:   0,
+      antialias: true,
     });
 
+    map.on("load", () => {
+      // Glow layer
+      map.addSource("route-glow", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      map.addLayer({
+        id:     "route-glow-layer",
+        type:   "line",
+        source: "route-glow",
+        paint: {
+          "line-color":   "#E8350A",
+          "line-width":   16,
+          "line-opacity": 0.15,
+          "line-blur":    8,
+        },
+        layout: { "line-cap": "round", "line-join": "round" },
+      });
+
+      // Route line
+      map.addSource("route", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      map.addLayer({
+        id:     "route-line",
+        type:   "line",
+        source: "route",
+        paint: {
+          "line-color":   "#E8350A",
+          "line-width":   4,
+          "line-opacity": 0.95,
+        },
+        layout: { "line-cap": "round", "line-join": "round" },
+      });
+
+      sourceReady.current = true;
+    });
+
+    mapRef.current = map;
+
     return () => {
-      mapRef.current?.remove();
-      mapRef.current   = null;
-      sourceRef.current = false;
+      map.remove();
+      mapRef.current  = null;
+      sourceReady.current = false;
     };
   }, []);
 
-  // Update route when points change
+  // Update route
   useEffect(() => {
-    if (!mapRef.current || !sourceRef.current) return;
+    if (!mapRef.current || !sourceReady.current) return;
 
-    // Only use points with real GPS coords
     const gpsPoints = routePoints.filter(
       (p) => p.lat !== undefined && p.lng !== undefined,
     );
@@ -110,51 +96,45 @@ export function LiveMap({ active, routePoints, style }: LiveMapProps) {
 
     const coords = gpsPoints.map((p) => [p.lng!, p.lat!]);
 
-    const geojson = {
-      type: "FeatureCollection" as const,
+    const geojson: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
       features: [{
-        type:       "Feature" as const,
-        geometry:   { type: "LineString" as const, coordinates: coords },
+        type:       "Feature",
+        geometry:   { type: "LineString", coordinates: coords },
         properties: {},
       }],
     };
 
-    const routeSource = mapRef.current.getSource("route");
-    const glowSource  = mapRef.current.getSource("route-glow");
+    const routeSource = mapRef.current.getSource("route") as mapboxgl.GeoJSONSource | undefined;
+    const glowSource  = mapRef.current.getSource("route-glow") as mapboxgl.GeoJSONSource | undefined;
 
-    if (routeSource) routeSource.setData(geojson);
-    if (glowSource)  glowSource.setData(geojson);
+    routeSource?.setData(geojson);
+    glowSource?.setData(geojson);
 
-    // Move live position marker
     const last = gpsPoints[gpsPoints.length - 1];
     if (!last) return;
 
+    const lngLat: [number, number] = [last.lng!, last.lat!];
+
     if (markerRef.current) {
-      markerRef.current.setLngLat([last.lng!, last.lat!]);
+      markerRef.current.setLngLat(lngLat);
     } else {
-      import("mapbox-gl").then((mapboxgl) => {
-        const mapboxglDefault = mapboxgl.default ?? mapboxgl;
-
-        const el = document.createElement("div");
-        el.style.cssText = `
-          width: 20px; height: 20px;
-          background: #E8350A;
-          border: 3px solid white;
-          border-radius: 50%;
-          box-shadow: 0 0 16px #E8350A, 0 0 32px #E8350A60;
-          animation: pulse 1.5s ease-in-out infinite;
-        `;
-
-        markerRef.current = new mapboxglDefault.Marker({ element: el })
-          .setLngLat([last.lng!, last.lat!])
-          .addTo(mapRef.current);
-      });
+      const el = document.createElement("div");
+      el.style.cssText = `
+        width: 20px; height: 20px;
+        background: #E8350A;
+        border: 3px solid white;
+        border-radius: 50%;
+        box-shadow: 0 0 16px #E8350A, 0 0 32px #E8350A60;
+      `;
+      markerRef.current = new mapboxgl.Marker({ element: el })
+        .setLngLat(lngLat)
+        .addTo(mapRef.current);
     }
 
-    // Follow the car smoothly
     if (active) {
       mapRef.current.easeTo({
-        center:   [last.lng!, last.lat!],
+        center:   lngLat,
         zoom:     17,
         pitch:    60,
         bearing:  calculateBearing(gpsPoints),
@@ -167,19 +147,18 @@ export function LiveMap({ active, routePoints, style }: LiveMapProps) {
     <div style={{ position: "relative", width: "100%", height: "100%", ...style }}>
       <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
 
-      {/* LIVE badge */}
       {active && (
         <div style={{
-          position:     "absolute",
-          top:          10,
-          right:        10,
-          background:   "rgba(232,53,10,0.15)",
-          border:       "1px solid #E8350A",
-          borderRadius: 6,
-          padding:      "3px 10px",
-          display:      "flex",
-          alignItems:   "center",
-          gap:          6,
+          position:       "absolute",
+          top:            10,
+          right:          10,
+          background:     "rgba(232,53,10,0.15)",
+          border:         "1px solid #E8350A",
+          borderRadius:   6,
+          padding:        "3px 10px",
+          display:        "flex",
+          alignItems:     "center",
+          gap:            6,
           backdropFilter: "blur(8px)",
         }}>
           <div style={{
@@ -201,7 +180,6 @@ export function LiveMap({ active, routePoints, style }: LiveMapProps) {
         </div>
       )}
 
-      {/* Mapbox CSS */}
       <style>{`
         .mapboxgl-ctrl-bottom-left,
         .mapboxgl-ctrl-bottom-right,
