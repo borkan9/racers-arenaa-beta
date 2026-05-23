@@ -84,7 +84,7 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
   useTelemetry({
     enabled:   phase === "racing",
     startTime,
-    simulate:  true,           // set to false to use real GPS
+    simulate:  false,           // set to false to use real GPS اقفل يخاللللللل
     callbacks: {
       onUpdate:     handleUpdate,
       onRoutePoint: handleRoutePoint,
