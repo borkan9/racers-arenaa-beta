@@ -41,7 +41,6 @@ export function ProfileScreen(_props: ProfileScreenProps) {
     history: false,
   });
 
-  const [editMode, setEditMode] = useState(false);
 
   const togglePrivacy = (key: keyof PrivacySettings) =>
     setPrivacy((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -50,10 +49,9 @@ export function ProfileScreen(_props: ProfileScreenProps) {
     <div style={{ padding: "24px 20px" }}>
 
       {/* ── Profile hero ── */}
-      <ProfileHero onEditClick={() => setEditMode((v) => !v)} />
+      <ProfileHero onEditClick={() => {}} />
 
       {/* ── Edit mode banner ── */}
-      {editMode && <EditBanner onClose={() => setEditMode(false)} />}
 
       {/* ── Vehicle card ── */}
       <VehicleCard />
@@ -186,56 +184,6 @@ function ProfileHero({ onEditClick }: ProfileHeroProps) {
         EDIT PROFILE
       </button>
     </div>
-  );
-}
-
-// ─── EDIT BANNER ─────────────────────────────────────────────────────────────
-
-interface EditBannerProps {
-  onClose: () => void;
-}
-
-function EditBanner({ onClose }: EditBannerProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: -8 }}
-      animate={{ opacity: 1, y:  0 }}
-      exit={{    opacity: 0, y: -8 }}
-      style={{
-        background:    `${C.accent}10`,
-        border:        `1px solid ${C.accent}40`,
-        borderRadius:  10,
-        padding:       "12px 16px",
-        marginBottom:  20,
-        display:       "flex",
-        justifyContent:"space-between",
-        alignItems:    "center",
-      }}
-    >
-      <span
-        style={{
-          fontFamily: FONT.body,
-          fontSize:   13,
-          color:      C.accent,
-          fontWeight: 600,
-        }}
-      >
-        Edit mode — connect a backend to persist changes.
-      </span>
-      <button
-        onClick={onClose}
-        style={{
-          background: "none",
-          border:     "none",
-          color:      C.accent,
-          cursor:     "pointer",
-          fontSize:   16,
-          lineHeight: 1,
-        }}
-      >
-        ✕
-      </button>
-    </motion.div>
   );
 }
 
