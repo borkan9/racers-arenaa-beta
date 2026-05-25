@@ -8,870 +8,308 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import { motion } from "framer-motion";
 import { Speedometer }        from "@/components/Speedometer";
 import { LiveMap }            from "@/components/LiveMap";
 import { CountdownOverlay }   from "@/components/CountdownOverlay";
 import { useTelemetry }       from "@/hooks/useTelemetry";
+import { useRaceSubmit }      from "@/hooks/useRace";
+import { useSession }         from "@/hooks/useSession";
 import {
-  C,
-  FONT,
-  RACE_MODES,
-  COUNTDOWN_OPTIONS,
-  SPEEDO_MAX_KMH,
-  SPEEDO_MAX_MPH,
-  TIMER_INTERVAL_MS,
+  C, FONT, RACE_MODES, COUNTDOWN_OPTIONS,
+  SPEEDO_MAX_KMH, SPEEDO_MAX_MPH, TIMER_INTERVAL_MS,
 } from "@/lib/constants";
-import { fmtTime, fmtSpeed, fmtDist, convertSpeed } from "@/lib/utils";
+import { fmtTime, fmtDist, convertSpeed } from "@/lib/utils";
 import type {
-  RacePhase,
-  RaceModeId,
-  SpeedUnit,
-  CountdownSeconds,
-  TelemetrySnapshot,
-  RoutePoint,
-  ScreenId,
+  RacePhase, RaceModeId, SpeedUnit,
+  CountdownSeconds, TelemetrySnapshot, RoutePoint, ScreenId,
 } from "@/types";
-
-// ─── TYPES ────────────────────────────────────────────────────────────────────
 
 interface RaceScreenProps {
   onExit: (dest: ScreenId) => void;
 }
 
-// ─── COMPONENT ────────────────────────────────────────────────────────────────
-
 export function RaceScreen({ onExit }: RaceScreenProps) {
-  // ── Config state (setup screen) ───────────────────────────────────────────
-  const [raceMode,   setRaceMode]   = useState<RaceModeId>("free");
-  const [unit,       setUnit]       = useState<SpeedUnit>("kmh");
-  const [countdown,  setCountdown]  = useState<CountdownSeconds>(3);
-  const [isPrivate,  setIsPrivate]  = useState(false);
+  const { isAuthenticated } = useSession();
+  const { submitRace, submitStatus } = useRaceSubmit();
 
-  // ── Race lifecycle ────────────────────────────────────────────────────────
-  const [phase,      setPhase]      = useState<RacePhase>("setup");
-  const [startTime,  setStartTime]  = useState<number | null>(null);
-  const [elapsed,    setElapsed]    = useState(0);
+  // Config
+  const [raceMode,  setRaceMode]  = useState<RaceModeId>("free");
+  const [unit,      setUnit]      = useState<SpeedUnit>("kmh");
+  const [countdown, setCountdown] = useState<CountdownSeconds>(3);
+  const [isPrivate, setIsPrivate] = useState(false);
 
-  // ── Telemetry ─────────────────────────────────────────────────────────────
-  const [telemetry,  setTelemetry]  = useState<TelemetrySnapshot>({
-    speed:    0,
-    topSpeed: 0,
-    distance: 0,
-    elapsed:  0,
-    accel:    0,
-    gForce:   0,
-    lat:      null,
-    lng:      null,
+  // Race lifecycle
+  const [phase,     setPhase]     = useState<RacePhase>("setup");
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [elapsed,   setElapsed]   = useState(0);
+
+  // Telemetry
+  const [telemetry, setTelemetry] = useState<TelemetrySnapshot>({
+    speed: 0, topSpeed: 0, distance: 0, elapsed: 0,
+    accel: 0, gForce: 0, lat: null, lng: null,
   });
   const [route, setRoute] = useState<RoutePoint[]>([]);
 
-  // ── Timer ref ─────────────────────────────────────────────────────────────
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startLatRef = useRef<number | null>(null);
+  const startLngRef = useRef<number | null>(null);
 
-  // ── Telemetry callbacks (stable refs) ────────────────────────────────────
   const handleUpdate = useCallback((snapshot: TelemetrySnapshot) => {
     setTelemetry(snapshot);
+    // Save start position
+    if (snapshot.lat && !startLatRef.current) {
+      startLatRef.current = snapshot.lat;
+      startLngRef.current = snapshot.lng;
+    }
   }, []);
 
   const handleRoutePoint = useCallback((point: RoutePoint) => {
-    setRoute((prev) =>
-      prev.length >= 500 ? [...prev.slice(-499), point] : [...prev, point],
-    );
+    setRoute((prev) => prev.length >= 500 ? [...prev.slice(-499), point] : [...prev, point]);
   }, []);
 
-  // ── Wire up telemetry hook ────────────────────────────────────────────────
   useTelemetry({
     enabled:   phase === "racing",
     startTime,
-    simulate:  false,           // set to false to use real GPS اقفل يخاللللللل
-    callbacks: {
-      onUpdate:     handleUpdate,
-      onRoutePoint: handleRoutePoint,
-    },
+    simulate:  false,
+    callbacks: { onUpdate: handleUpdate, onRoutePoint: handleRoutePoint },
   });
 
-  // ── Wall-clock timer (50 ms cadence for smooth display) ──────────────────
+  // Timer
   useEffect(() => {
     if (phase === "racing" && startTime !== null) {
-      timerRef.current = setInterval(() => {
-        setElapsed(Date.now() - startTime);
-      }, TIMER_INTERVAL_MS);
+      timerRef.current = setInterval(() => setElapsed(Date.now() - startTime), TIMER_INTERVAL_MS);
     } else {
-      if (timerRef.current !== null) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      if (phase !== "finished") {
-        setElapsed(0);
-      }
+      if (timerRef.current !== null) { clearInterval(timerRef.current); timerRef.current = null; }
+      if (phase !== "finished") setElapsed(0);
     }
-    return () => {
-      if (timerRef.current !== null) clearInterval(timerRef.current);
-    };
+    return () => { if (timerRef.current !== null) clearInterval(timerRef.current); };
   }, [phase, startTime]);
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleCountdownComplete = useCallback(() => {
-    const now = Date.now();
-    setStartTime(now);
+    setStartTime(Date.now());
     setPhase("racing");
   }, []);
 
-  const handleStopRace = useCallback(() => {
+  const handleStopRace = useCallback(async () => {
     setPhase("finished");
-  }, []);
+
+    if (!isAuthenticated) return;
+
+    // Map raceMode to API format
+    const modeMap: Record<RaceModeId, string> = {
+      "free":     "FREE_RUN",
+      "0-100":    "ZERO_TO_100",
+      "0-200":    "ZERO_TO_200",
+      "qmile":    "QUARTER_MILE",
+      "topspeed": "TOP_SPEED",
+    };
+
+    // Convert speed if MPH
+    const maxSpeedKmh = unit === "mph"
+      ? telemetry.topSpeed / 0.621371
+      : telemetry.topSpeed;
+
+    const avgSpeedKmh = unit === "mph"
+      ? (telemetry.topSpeed * 0.7) / 0.621371
+      : telemetry.topSpeed * 0.7;
+
+    // Build GPS route points
+    const gpsRoute = route
+      .filter((p) => p.lat !== undefined && p.lng !== undefined)
+      .slice(0, 200)
+      .map((p) => ({
+        lat:   p.lat!,
+        lng:   p.lng!,
+        speed: p.speed ?? 0,
+        ts:    p.ts ?? 0,
+      }));
+
+    const lastPoint = gpsRoute[gpsRoute.length - 1];
+
+    await submitRace({
+      mode:        modeMap[raceMode] as any,
+      unit:        "KMH",
+      duration_ms: elapsed,
+      max_speed:   Math.round(maxSpeedKmh * 10) / 10,
+      avg_speed:   Math.round(avgSpeedKmh * 10) / 10,
+      distance_km: telemetry.distance,
+      peak_accel:  telemetry.accel,
+      start_lat:   startLatRef.current,
+      start_lng:   startLngRef.current,
+      finish_lat:  lastPoint?.lat ?? null,
+      finish_lng:  lastPoint?.lng ?? null,
+      route_points: gpsRoute,
+      is_private:  isPrivate,
+    });
+  }, [phase, isAuthenticated, raceMode, unit, telemetry, route, elapsed, isPrivate, submitRace]);
 
   const handleReset = useCallback(() => {
     setPhase("setup");
     setStartTime(null);
     setElapsed(0);
     setRoute([]);
-    setTelemetry({
-      speed: 0, topSpeed: 0, distance: 0,
-      elapsed: 0, accel: 0, gForce: 0,
-      lat: null, lng: null,
-    });
+    startLatRef.current = null;
+    startLngRef.current = null;
+    setTelemetry({ speed: 0, topSpeed: 0, distance: 0, elapsed: 0, accel: 0, gForce: 0, lat: null, lng: null });
   }, []);
 
-  // ── Derived display values ────────────────────────────────────────────────
   const displaySpeed    = convertSpeed(telemetry.speed,    unit);
   const displayTopSpeed = convertSpeed(telemetry.topSpeed, unit);
   const maxSpeedo       = unit === "mph" ? SPEEDO_MAX_MPH : SPEEDO_MAX_KMH;
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
+  // ── SETUP ──
   if (phase === "setup") {
     return (
-      <SetupScreen
-        raceMode={raceMode}   setRaceMode={setRaceMode}
-        unit={unit}           setUnit={setUnit}
-        countdown={countdown} setCountdown={setCountdown}
-        isPrivate={isPrivate} setIsPrivate={setIsPrivate}
-        onBack={() => onExit("home")}
-        onStart={() => setPhase("countdown")}
-      />
-    );
-  }
-
-  if (phase === "countdown") {
-    return (
-      <CountdownOverlay
-        from={countdown}
-        onComplete={handleCountdownComplete}
-      />
-    );
-  }
-
-  // phase === "racing" | "finished"
-  return (
-    <LiveRaceView
-      phase={phase}
-      elapsed={elapsed}
-      telemetry={telemetry}
-      route={route}
-      unit={unit}
-      displaySpeed={displaySpeed}
-      displayTopSpeed={displayTopSpeed}
-      maxSpeedo={maxSpeedo}
-      onStop={handleStopRace}
-      onReset={handleReset}
-      onExit={onExit}
-    />
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SETUP SCREEN
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface SetupScreenProps {
-  raceMode:    RaceModeId;
-  setRaceMode: (m: RaceModeId) => void;
-  unit:        SpeedUnit;
-  setUnit:     (u: SpeedUnit) => void;
-  countdown:   CountdownSeconds;
-  setCountdown:(c: CountdownSeconds) => void;
-  isPrivate:   boolean;
-  setIsPrivate:(v: boolean) => void;
-  onBack:      () => void;
-  onStart:     () => void;
-}
-
-function SetupScreen({
-  raceMode, setRaceMode,
-  unit, setUnit,
-  countdown, setCountdown,
-  isPrivate, setIsPrivate,
-  onBack, onStart,
-}: SetupScreenProps) {
-  return (
-    <div
-      style={{
-        minHeight:  "100vh",
-        background: C.bg,
-        display:    "flex",
-        flexDirection: "column",
-        padding:    20,
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          display:     "flex",
-          alignItems:  "center",
-          gap:         12,
-          marginBottom: 32,
-        }}
-      >
-        <button
-          onClick={onBack}
-          style={{
-            background:   "none",
-            border:       `1px solid ${C.border}`,
-            borderRadius: 8,
-            padding:      "8px 16px",
-            color:        C.muted,
-            cursor:       "pointer",
-            fontFamily:   FONT.body,
-            fontWeight:   600,
-            fontSize:     13,
-            letterSpacing: 1,
-          }}
-        >
-          ← BACK
-        </button>
-        <h1
-          className="display"
-          style={{ fontSize: 28, letterSpacing: 4, color: C.text }}
-        >
-          NEW RUN
-        </h1>
-      </div>
-
-      <div style={{ maxWidth: 480, margin: "0 auto", width: "100%" }}>
-
-        {/* Race Mode */}
-        <SectionLabel>RACE MODE</SectionLabel>
-        <div
-          style={{
-            display:             "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap:                 10,
-            marginBottom:        24,
-          }}
-        >
-          {RACE_MODES.map((m) => (
-            <OptionButton
-              key={m.id}
-              label={m.label}
-              selected={raceMode === m.id}
-              onClick={() => setRaceMode(m.id as RaceModeId)}
-            />
-          ))}
+      <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", padding: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 32 }}>
+          <button onClick={() => onExit("home")} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 16px", color: C.muted, cursor: "pointer", fontFamily: FONT.body, fontWeight: 600, fontSize: 13 }}>← BACK</button>
+          <h1 className="display" style={{ fontSize: 28, letterSpacing: 4, color: C.text }}>NEW RUN</h1>
         </div>
 
-        {/* Speed Unit */}
-        <SectionLabel>UNIT</SectionLabel>
-        <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
-          {(["kmh", "mph"] as SpeedUnit[]).map((u) => (
-            <button
-              key={u}
-              onClick={() => setUnit(u)}
-              style={{
-                flex:          1,
-                padding:       "12px",
-                background:    unit === u ? `${C.accent}15` : C.card,
-                border:        `1px solid ${unit === u ? C.accent : C.border}`,
-                borderRadius:  10,
-                color:         unit === u ? C.accent : C.muted,
-                fontFamily:    FONT.display,
-                fontSize:      20,
-                letterSpacing: 3,
-                cursor:        "pointer",
-                transition:    "all 0.2s",
-              }}
-            >
-              {u === "kmh" ? "KM/H" : "MPH"}
-            </button>
-          ))}
-        </div>
+        <div style={{ maxWidth: 480, margin: "0 auto", width: "100%" }}>
 
-        {/* Countdown */}
-        <SectionLabel>COUNTDOWN</SectionLabel>
-        <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
-          {COUNTDOWN_OPTIONS.map((c) => (
-            <button
-              key={c}
-              onClick={() => setCountdown(c as CountdownSeconds)}
-              style={{
-                flex:          1,
-                padding:       "14px",
-                background:    countdown === c ? `${C.accent}15` : C.card,
-                border:        `1px solid ${countdown === c ? C.accent : C.border}`,
-                borderRadius:  10,
-                color:         countdown === c ? C.accent : C.muted,
-                fontFamily:    FONT.display,
-                fontSize:      28,
-                letterSpacing: 2,
-                cursor:        "pointer",
-                transition:    "all 0.2s",
-              }}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
-
-        {/* Private toggle */}
-        <div
-          style={{
-            display:        "flex",
-            justifyContent: "space-between",
-            alignItems:     "center",
-            background:     C.card,
-            border:         `1px solid ${C.border}`,
-            borderRadius:   12,
-            padding:        "14px 16px",
-            marginBottom:   36,
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontFamily: FONT.body,
-                fontWeight: 700,
-                fontSize:   14,
-                color:      C.text,
-              }}
-            >
-              Private Run
-            </div>
-            <div
-              style={{
-                fontFamily: FONT.body,
-                fontSize:   12,
-                color:      C.muted,
-                marginTop:  2,
-              }}
-            >
-              Won't appear on leaderboard
-            </div>
+          {/* Race Mode */}
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, letterSpacing: 3, color: C.muted, marginBottom: 12, fontFamily: FONT.body }}>RACE MODE</label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 24 }}>
+            {RACE_MODES.map((m) => (
+              <button key={m.id} onClick={() => setRaceMode(m.id as RaceModeId)}
+                style={{ padding: "14px 16px", background: raceMode === m.id ? `${C.accent}15` : C.card, border: `1px solid ${raceMode === m.id ? C.accent : C.border}`, borderRadius: 10, color: raceMode === m.id ? C.text : C.muted, fontFamily: FONT.body, fontWeight: 700, fontSize: 14, cursor: "pointer", transition: "all 0.2s", textAlign: "left" }}>
+                {m.label}
+              </button>
+            ))}
           </div>
-          <ToggleSwitch checked={isPrivate} onChange={setIsPrivate} />
-        </div>
 
-        {/* Start button */}
-        <button
-          onClick={onStart}
-          style={{
-            width:         "100%",
-            padding:       "20px",
-            background:    C.accent,
-            border:        "none",
-            borderRadius:  14,
-            color:         C.white,
-            fontFamily:    FONT.display,
-            fontSize:      24,
-            letterSpacing: 6,
-            cursor:        "pointer",
-            animation:     "glow-pulse 2s ease-in-out infinite",
-            marginBottom:  12,
-          }}
-        >
-          ▶ START RUN
-        </button>
+          {/* Unit */}
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, letterSpacing: 3, color: C.muted, marginBottom: 12, fontFamily: FONT.body }}>UNIT</label>
+          <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
+            {(["kmh", "mph"] as SpeedUnit[]).map((u) => (
+              <button key={u} onClick={() => setUnit(u)}
+                style={{ flex: 1, padding: "12px", background: unit === u ? `${C.accent}15` : C.card, border: `1px solid ${unit === u ? C.accent : C.border}`, borderRadius: 10, color: unit === u ? C.accent : C.muted, fontFamily: FONT.display, fontSize: 20, letterSpacing: 3, cursor: "pointer", transition: "all 0.2s" }}>
+                {u === "kmh" ? "KM/H" : "MPH"}
+              </button>
+            ))}
+          </div>
 
-        <div
-          style={{
-            textAlign:     "center",
-            fontSize:      11,
-            color:         C.muted,
-            fontFamily:    FONT.body,
-            letterSpacing: 2,
-          }}
-        >
-          GPS + ACCELEROMETER + GYROSCOPE ACTIVE
+          {/* Countdown */}
+          <label style={{ display: "block", fontSize: 11, fontWeight: 700, letterSpacing: 3, color: C.muted, marginBottom: 12, fontFamily: FONT.body }}>COUNTDOWN</label>
+          <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
+            {COUNTDOWN_OPTIONS.map((c) => (
+              <button key={c} onClick={() => setCountdown(c as CountdownSeconds)}
+                style={{ flex: 1, padding: "14px", background: countdown === c ? `${C.accent}15` : C.card, border: `1px solid ${countdown === c ? C.accent : C.border}`, borderRadius: 10, color: countdown === c ? C.accent : C.muted, fontFamily: FONT.display, fontSize: 28, letterSpacing: 2, cursor: "pointer", transition: "all 0.2s" }}>
+                {c}
+              </button>
+            ))}
+          </div>
+
+          {/* Private toggle */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 36 }}>
+            <div>
+              <div style={{ fontFamily: FONT.body, fontWeight: 700, fontSize: 14, color: C.text }}>Private Run</div>
+              <div style={{ fontFamily: FONT.body, fontSize: 12, color: C.muted, marginTop: 2 }}>Won't appear on leaderboard</div>
+            </div>
+            <button role="switch" aria-checked={isPrivate} onClick={() => setIsPrivate(!isPrivate)}
+              style={{ width: 50, height: 28, borderRadius: 14, border: "none", cursor: "pointer", background: isPrivate ? C.accent : C.dim, transition: "background 0.25s", position: "relative", flexShrink: 0 }}>
+              <div style={{ position: "absolute", top: 3, left: isPrivate ? 24 : 3, width: 22, height: 22, borderRadius: "50%", background: C.white, transition: "left 0.25s" }} />
+            </button>
+          </div>
+
+          {!isAuthenticated && (
+            <div style={{ background: `${C.yellow}10`, border: `1px solid ${C.yellow}40`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontFamily: FONT.body, fontSize: 13, color: C.yellow }}>
+              ⚠ Sign in to save your runs and appear on the leaderboard.
+            </div>
+          )}
+
+          <button onClick={() => setPhase("countdown")}
+            style={{ width: "100%", padding: "20px", background: C.accent, border: "none", borderRadius: 14, color: C.white, fontFamily: FONT.display, fontSize: 24, letterSpacing: 6, cursor: "pointer", animation: "glow-pulse 2s ease-in-out infinite", marginBottom: 12 }}>
+            ▶ START RUN
+          </button>
+          <div style={{ textAlign: "center", fontSize: 11, color: C.muted, fontFamily: FONT.body, letterSpacing: 2 }}>
+            GPS + ACCELEROMETER + GYROSCOPE ACTIVE
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LIVE RACE VIEW
-// ─────────────────────────────────────────────────────────────────────────────
+  // ── COUNTDOWN ──
+  if (phase === "countdown") {
+    return <CountdownOverlay from={countdown} onComplete={handleCountdownComplete} />;
+  }
 
-interface LiveRaceViewProps {
-  phase:            RacePhase;
-  elapsed:          number;
-  telemetry:        TelemetrySnapshot;
-  route:            RoutePoint[];
-  unit:             SpeedUnit;
-  displaySpeed:     number;
-  displayTopSpeed:  number;
-  maxSpeedo:        number;
-  onStop:           () => void;
-  onReset:          () => void;
-  onExit:           (dest: ScreenId) => void;
-}
-
-function LiveRaceView({
-  phase,
-  elapsed,
-  telemetry,
-  route,
-  unit,
-  displaySpeed,
-  displayTopSpeed,
-  maxSpeedo,
-  onStop,
-  onReset,
-  onExit,
-}: LiveRaceViewProps) {
+  // ── RACING / FINISHED ──
   const isRacing   = phase === "racing";
   const isFinished = phase === "finished";
 
   return (
-    <div
-      style={{
-        minHeight:     "100vh",
-        background:    C.bg,
-        display:       "flex",
-        flexDirection: "column",
-        overflow:      "hidden",
-      }}
-    >
-      {/* ── Status bar ── */}
-      <StatusBar
-        isRacing={isRacing}
-        elapsed={elapsed}
-        onSaveExit={isFinished ? () => onExit("history") : undefined}
-      />
+    <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
-      {/* ── Main telemetry area ── */}
-      <div
-        style={{
-          flex:    1,
-          display: "flex",
-          flexDirection: "column",
-          padding: "16px 20px",
-          gap:     16,
-          overflow: "hidden",
-        }}
-      >
-        {/* Speedometer */}
+      {/* Status bar */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 20px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: isRacing ? C.accent : C.muted, animation: isRacing ? "blink 1s step-end infinite" : "none" }} />
+          <span className="display" style={{ fontSize: 16, letterSpacing: 4, color: isRacing ? C.accent : C.muted }}>
+            {isRacing ? "LIVE RACE" : "RUN COMPLETE"}
+          </span>
+        </div>
+        <div className="display" style={{ fontSize: 28, letterSpacing: 3, color: isRacing ? C.text : C.gold, fontVariantNumeric: "tabular-nums" }}>
+          {fmtTime(elapsed)}
+        </div>
+        {isFinished && (
+          <button onClick={() => { handleReset(); onExit("history"); }}
+            style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 16px", color: C.text, cursor: "pointer", fontFamily: FONT.body, fontWeight: 700, fontSize: 12 }}>
+            {submitStatus === "submitting" ? "SAVING…" : "VIEW HISTORY"}
+          </button>
+        )}
+      </div>
+
+      {/* Telemetry */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "16px 20px", gap: 16, overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "center" }}>
-          <Speedometer
-            speed={displaySpeed}
-            maxSpeed={maxSpeedo}
-            unit={unit}
-            style={{ maxWidth: 340 }}
-          />
+          <Speedometer speed={displaySpeed} maxSpeed={maxSpeedo} unit={unit} style={{ maxWidth: 340 }} />
         </div>
 
-        {/* Stats grid */}
-        <StatsGrid
-          telemetry={telemetry}
-          displayTopSpeed={displayTopSpeed}
-          unit={unit}
-        />
+        {/* Stats */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, flexShrink: 0 }}>
+          {[
+            { label: "TOP SPEED", val: `${Math.round(displayTopSpeed)}`, sub: unit === "mph" ? "mph" : "km/h", gold: true, hot: false },
+            { label: "DISTANCE",  val: fmtDist(telemetry.distance, unit), sub: "", gold: false, hot: false },
+            { label: "ACCEL",     val: telemetry.accel.toFixed(2), sub: "m/s²", gold: false, hot: false },
+            { label: "G-FORCE",   val: telemetry.gForce.toFixed(2), sub: "G",   gold: false, hot: telemetry.gForce > 1 },
+          ].map((s) => (
+            <div key={s.label} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: C.muted, marginBottom: 6, fontFamily: FONT.body }}>{s.label}</div>
+              <div className="display" style={{ fontSize: 22, color: s.hot ? C.accent : s.gold ? C.gold : C.text, letterSpacing: 1 }}>{s.val}</div>
+              {s.sub && <div style={{ fontSize: 9, color: C.muted, marginTop: 2, fontFamily: FONT.body }}>{s.sub}</div>}
+            </div>
+          ))}
+        </div>
 
-        {/* Live map */}
-        <div
-          style={{
-            height:       160,
-            borderRadius: 12,
-            overflow:     "hidden",
-            border:       `1px solid ${C.border}`,
-            flexShrink:   0,
-          }}
-        >
+        {/* Map */}
+        <div style={{ height: 200, borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}`, flexShrink: 0 }}>
           <LiveMap active={isRacing} routePoints={route} />
         </div>
       </div>
 
-      {/* ── Controls ── */}
-      <div style={{ padding: "16px 20px", paddingBottom: 32 }}>
+      {/* Controls */}
+      <div style={{ padding: "16px 20px", paddingBottom: 32, flexShrink: 0 }}>
         {isRacing ? (
-          <StopButton onClick={onStop} />
+          <button onClick={handleStopRace}
+            style={{ width: "100%", padding: "18px", background: "transparent", border: `2px solid ${C.accent}`, borderRadius: 14, color: C.accent, fontFamily: FONT.display, fontSize: 22, letterSpacing: 6, cursor: "pointer" }}>
+            ⬛ STOP RUN
+          </button>
         ) : (
-          <FinishedControls
-            onReset={onReset}
-            onViewHistory={() => onExit("history")}
-          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <button onClick={handleReset}
+              style={{ padding: "16px", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 12, color: C.muted, fontFamily: FONT.display, fontSize: 16, letterSpacing: 3, cursor: "pointer" }}>
+              NEW RUN
+            </button>
+            <button onClick={() => { handleReset(); onExit("history"); }}
+              style={{ padding: "16px", background: C.accent, border: "none", borderRadius: 12, color: C.white, fontFamily: FONT.display, fontSize: 16, letterSpacing: 3, cursor: "pointer" }}>
+              {submitStatus === "submitting" ? "SAVING…" : submitStatus === "flagged" ? "⚠ FLAGGED" : "VIEW HISTORY"}
+            </button>
+          </div>
         )}
       </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STATUS BAR
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface StatusBarProps {
-  isRacing:    boolean;
-  elapsed:     number;
-  onSaveExit?: () => void;
-}
-
-function StatusBar({ isRacing, elapsed, onSaveExit }: StatusBarProps) {
-  return (
-    <div
-      style={{
-        display:        "flex",
-        justifyContent: "space-between",
-        alignItems:     "center",
-        padding:        "12px 20px",
-        borderBottom:   `1px solid ${C.border}`,
-        flexShrink:     0,
-      }}
-    >
-      {/* Live indicator */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div
-          style={{
-            width:        8,
-            height:       8,
-            borderRadius: "50%",
-            background:   isRacing ? C.accent : C.muted,
-            animation:    isRacing ? "blink 1s step-end infinite" : "none",
-          }}
-        />
-        <span
-          className="display"
-          style={{
-            fontSize:      16,
-            letterSpacing: 4,
-            color:         isRacing ? C.accent : C.muted,
-          }}
-        >
-          {isRacing ? "LIVE RACE" : "RUN COMPLETE"}
-        </span>
-      </div>
-
-      {/* Timer */}
-      <div
-        className="display"
-        style={{
-          fontSize:      28,
-          letterSpacing: 3,
-          color:         isRacing ? C.text : C.gold,
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
-        {fmtTime(elapsed)}
-      </div>
-
-      {/* Save button (finished only) */}
-      {onSaveExit ? (
-        <button
-          onClick={onSaveExit}
-          style={{
-            background:    C.card,
-            border:        `1px solid ${C.border}`,
-            borderRadius:  8,
-            padding:       "8px 16px",
-            color:         C.text,
-            cursor:        "pointer",
-            fontFamily:    FONT.body,
-            fontWeight:    700,
-            fontSize:      12,
-            letterSpacing: 1,
-          }}
-        >
-          SAVE & EXIT
-        </button>
-      ) : (
-        // Spacer so timer stays centred
-        <div style={{ width: 80 }} />
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STATS GRID
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface StatsGridProps {
-  telemetry:       TelemetrySnapshot;
-  displayTopSpeed: number;
-  unit:            SpeedUnit;
-}
-
-function StatsGrid({ telemetry, displayTopSpeed, unit }: StatsGridProps) {
-  const stats = [
-    {
-      label: "TOP SPEED",
-      val:   `${Math.round(displayTopSpeed)}`,
-      sub:   unit === "mph" ? "mph" : "km/h",
-      hot:   false,
-      gold:  true,
-    },
-    {
-      label: "DISTANCE",
-      val:   fmtDist(telemetry.distance, unit),
-      sub:   "",
-      hot:   false,
-      gold:  false,
-    },
-    {
-      label: "ACCEL",
-      val:   telemetry.accel.toFixed(2),
-      sub:   "m/s²",
-      hot:   false,
-      gold:  false,
-    },
-    {
-      label: "G-FORCE",
-      val:   telemetry.gForce.toFixed(2),
-      sub:   "G",
-      hot:   telemetry.gForce > 1.0,
-      gold:  false,
-    },
-  ] as const;
-
-  return (
-    <div
-      style={{
-        display:             "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
-        gap:                 10,
-        flexShrink:          0,
-      }}
-    >
-      {stats.map((s) => (
-        <StatBox
-          key={s.label}
-          label={s.label}
-          value={s.val}
-          sub={s.sub}
-          hot={s.hot}
-          gold={s.gold}
-        />
-      ))}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STOP BUTTON
-// ─────────────────────────────────────────────────────────────────────────────
-
-function StopButton({ onClick }: { onClick: () => void }) {
-  const [hovered, setHovered] = useState(false);
-
-  return (
-    <button
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        width:         "100%",
-        padding:       "18px",
-        background:    hovered ? `${C.accent}15` : "transparent",
-        border:        `2px solid ${C.accent}`,
-        borderRadius:  14,
-        color:         C.accent,
-        fontFamily:    FONT.display,
-        fontSize:      22,
-        letterSpacing: 6,
-        cursor:        "pointer",
-        transition:    "background 0.2s",
-      }}
-    >
-      ⬛ STOP RUN
-    </button>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FINISHED CONTROLS
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface FinishedControlsProps {
-  onReset:        () => void;
-  onViewHistory:  () => void;
-}
-
-function FinishedControls({ onReset, onViewHistory }: FinishedControlsProps) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-      <button
-        onClick={onReset}
-        style={{
-          padding:       "16px",
-          background:    "transparent",
-          border:        `1px solid ${C.border}`,
-          borderRadius:  12,
-          color:         C.muted,
-          fontFamily:    FONT.display,
-          fontSize:      16,
-          letterSpacing: 3,
-          cursor:        "pointer",
-        }}
-      >
-        NEW RUN
-      </button>
-      <button
-        onClick={onViewHistory}
-        style={{
-          padding:       "16px",
-          background:    C.accent,
-          border:        "none",
-          borderRadius:  12,
-          color:         C.white,
-          fontFamily:    FONT.display,
-          fontSize:      16,
-          letterSpacing: 3,
-          cursor:        "pointer",
-        }}
-      >
-        VIEW HISTORY
-      </button>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SHARED SMALL COMPONENTS
-// ─────────────────────────────────────────────────────────────────────────────
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <label
-      style={{
-        display:       "block",
-        fontSize:      11,
-        fontWeight:    700,
-        letterSpacing: 3,
-        color:         C.muted,
-        marginBottom:  12,
-        fontFamily:    FONT.body,
-      }}
-    >
-      {children}
-    </label>
-  );
-}
-
-interface OptionButtonProps {
-  label:    string;
-  selected: boolean;
-  onClick:  () => void;
-}
-
-function OptionButton({ label, selected, onClick }: OptionButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        padding:       "14px 16px",
-        background:    selected ? `${C.accent}15` : C.card,
-        border:        `1px solid ${selected ? C.accent : C.border}`,
-        borderRadius:  10,
-        color:         selected ? C.text : C.muted,
-        fontFamily:    FONT.body,
-        fontWeight:    700,
-        fontSize:      14,
-        letterSpacing: 1,
-        cursor:        "pointer",
-        transition:    "all 0.2s",
-        textAlign:     "left",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-interface ToggleSwitchProps {
-  checked:  boolean;
-  onChange: (v: boolean) => void;
-}
-
-function ToggleSwitch({ checked, onChange }: ToggleSwitchProps) {
-  return (
-    <button
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      style={{
-        width:        50,
-        height:       28,
-        borderRadius: 14,
-        border:       "none",
-        cursor:       "pointer",
-        background:   checked ? C.accent : C.dim,
-        transition:   "background 0.25s",
-        position:     "relative",
-        flexShrink:   0,
-      }}
-    >
-      <div
-        style={{
-          position:     "absolute",
-          top:          3,
-          left:         checked ? 24 : 3,
-          width:        22,
-          height:       22,
-          borderRadius: "50%",
-          background:   C.white,
-          transition:   "left 0.25s",
-        }}
-      />
-    </button>
-  );
-}
-
-interface StatBoxProps {
-  label: string;
-  value: string;
-  sub:   string;
-  hot:   boolean;
-  gold:  boolean;
-}
-
-function StatBox({ label, value, sub, hot, gold }: StatBoxProps) {
-  return (
-    <div
-      style={{
-        background:   C.card,
-        border:       `1px solid ${C.border}`,
-        borderRadius: 10,
-        padding:      "12px 10px",
-        textAlign:    "center",
-      }}
-    >
-      <div
-        style={{
-          fontSize:      9,
-          fontWeight:    700,
-          letterSpacing: 2,
-          color:         C.muted,
-          marginBottom:  6,
-          fontFamily:    FONT.body,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        className="display"
-        style={{
-          fontSize: 22,
-          color:    hot ? C.accent : gold ? C.gold : C.text,
-          letterSpacing: 1,
-        }}
-      >
-        {value}
-      </div>
-      {sub && (
-        <div style={{ fontSize: 9, color: C.muted, marginTop: 2, fontFamily: FONT.body }}>
-          {sub}
-        </div>
-      )}
     </div>
   );
 }
