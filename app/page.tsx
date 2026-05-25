@@ -144,43 +144,25 @@ export default function App() {
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {isAuthenticated ? (
-                <button
-                  onClick={() => navigate("admin")}
-                  style={{
-                    background:    "none",
-                    border:        `1px solid ${C.border}`,
-                    borderRadius:  6,
-                    padding:       "5px 12px",
-                    color:         C.muted,
-                    cursor:        "pointer",
-                    fontFamily:    FONT.body,
-                    fontWeight:    700,
-                    fontSize:      11,
-                    letterSpacing: 2,
-                  }}
-                >
-                  ADMIN
-                </button>
-              ) : (
-                <button
-                  onClick={() => window.location.href = "/auth/signin"}
-                  style={{
-                    background:    C.accent,
-                    border:        "none",
-                    borderRadius:  6,
-                    padding:       "6px 14px",
-                    color:         C.white,
-                    cursor:        "pointer",
-                    fontFamily:    FONT.display,
-                    fontSize:      14,
-                    letterSpacing: 3,
-                  }}
-                >
-                  SIGN IN
-                </button>
-              )}
-            </div>
+  {!isAuthenticated && (
+    <button
+      onClick={() => window.location.href = "/auth/signin"}
+      style={{
+        background:    C.accent,
+        border:        "none",
+        borderRadius:  6,
+        padding:       "6px 14px",
+        color:         C.white,
+        cursor:        "pointer",
+        fontFamily:    FONT.display,
+        fontSize:      14,
+        letterSpacing: 3,
+      }}
+    >
+      SIGN IN
+    </button>
+  )}
+</div>
           </header>
         )}
 
