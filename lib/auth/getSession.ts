@@ -1,12 +1,11 @@
 // lib/auth/getSession.ts
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { Session, User }         from "@supabase/supabase-js";
+import type { User }                  from "@supabase/supabase-js";
 
 export interface SessionResult {
-  session: Session | null;
-  user:    User    | null;
-  error:   string  | null;
+  user:  User | null;
+  error: string | null;
 }
 
 export async function getSession(): Promise<SessionResult> {
@@ -14,25 +13,17 @@ export async function getSession(): Promise<SessionResult> {
     const supabase = await createSupabaseServerClient();
 
     const {
-      data: { session },
+      data: { user },
       error,
-    } = await supabase.auth.getSession();
+    } = await supabase.auth.getUser();
 
     if (error) {
-      return { session: null, user: null, error: error.message };
+      return { user: null, error: error.message };
     }
 
-    return {
-      session,
-      user:  session?.user ?? null,
-      error: null,
-    };
+    return { user, error: null };
   } catch (unexpected) {
-    return {
-      session: null,
-      user:    null,
-      error:   String(unexpected),
-    };
+    return { user: null, error: String(unexpected) };
   }
 }
 

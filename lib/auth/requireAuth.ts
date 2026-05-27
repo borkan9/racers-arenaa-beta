@@ -1,8 +1,8 @@
 // lib/auth/requireAuth.ts
 
-import { NextResponse }  from "next/server";
-import { getSession }    from "@/lib/auth/getSession";
-import type { User }     from "@supabase/supabase-js";
+import { NextResponse } from "next/server";
+import { getSession }   from "@/lib/auth/getSession";
+import type { User }    from "@supabase/supabase-js";
 
 export interface AuthGuardSuccess {
   ok:        true;
