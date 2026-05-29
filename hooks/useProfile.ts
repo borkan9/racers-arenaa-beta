@@ -1,29 +1,18 @@
 // hooks/useProfile.ts
-//
-// Client-side profile hook.
-// Fetches and caches the authenticated user's profile from /api/profile.
-// Exposes an update function that PATCHes the API and syncs local state.
-// Use this in any "use client" component that needs profile data.
 
 "use client";
 
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-} from "react";
-import { useSession }  from "@/hooks/useSession";
-import type { UserRow } from "@/types/database.types";
-
-// ─── TYPES ────────────────────────────────────────────────────────────────────
+import { useState, useEffect, useCallback, useRef } from "react";
+import { createClient }  from "@/lib/supabase/client";
+import { useSession }    from "@/hooks/useSession";
+import type { UserRow }  from "@/types/database.types";
 
 export type ProfileStatus =
-  | "idle"      // hook mounted, session not yet known
-  | "loading"   // fetch in progress
-  | "success"   // profile loaded
-  | "error"     // fetch failed
-  | "not_found"; // authenticated but no profile row yet
+  | "idle"
+  | "loading"
+  | "success"
+  | "error"
+  | "not_found";
 
 export interface UpdateProfilePayload {
   username?: string;
@@ -45,130 +34,124 @@ export interface UseProfileReturn {
   updateProfile: (payload: UpdateProfilePayload) => Promise<UpdateProfileResult>;
 }
 
-// ─── HOOK ─────────────────────────────────────────────────────────────────────
-
 export function useProfile(): UseProfileReturn {
-  const { isAuthenticated, isLoading: sessionLoading } = useSession();
+  const { user, isAuthenticated, isLoading: sessionLoading } = useSession();
 
   const [profile, setProfile] = useState<UserRow | null>(null);
   const [status,  setStatus]  = useState<ProfileStatus>("idle");
   const [error,   setError]   = useState<string | null>(null);
 
-  // Prevent fetch being called multiple times on mount
   const fetchingRef = useRef(false);
 
-  // ── Fetch profile from API ────────────────────────────────────────────────
   const fetchProfile = useCallback(async () => {
-    if (fetchingRef.current) return;
+    if (fetchingRef.current || !user?.id) return;
     fetchingRef.current = true;
     setStatus("loading");
     setError(null);
 
     try {
-      const res = await fetch("/api/profile", {
-        method:      "GET",
-        credentials: "include",  // send session cookie
-        headers:     { "Content-Type": "application/json" },
-      });
+      const supabase = createClient();
 
-      if (res.status === 401) {
-        // Session expired between hook mount and fetch
-        setProfile(null);
-        setStatus("idle");
-        return;
-      }
+      const { data, error: dbError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
 
-      if (res.status === 404) {
-        setProfile(null);
-        setStatus("not_found");
-        return;
-      }
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        const msg  = body?.error ?? `Request failed with status ${res.status}.`;
-        setError(msg);
+      if (dbError) {
+        console.error("[useProfile] error:", dbError.message);
+        setError(dbError.message);
         setStatus("error");
         return;
       }
 
-      const body = await res.json();
-      setProfile(body.user as UserRow);
+      if (!data) {
+        // Profile doesn't exist — create it
+        const { data: created, error: insertError } = await supabase
+          .from("users")
+          .insert({
+            id:       user.id,
+            username: user.email?.split("@")[0] ?? null,
+            avatar:   user.user_metadata?.avatar_url ?? null,
+            bio:      null,
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error("[useProfile] insert error:", insertError.message);
+          setStatus("not_found");
+          return;
+        }
+
+        setProfile(created as UserRow);
+        setStatus("success");
+        return;
+      }
+
+      setProfile(data as UserRow);
       setStatus("success");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error("[useProfile] fetch error:", msg);
+      console.error("[useProfile] unexpected error:", msg);
       setError(msg);
       setStatus("error");
     } finally {
       fetchingRef.current = false;
     }
-  }, []);
+  }, [user?.id]);
 
-  // ── Auto-fetch when session becomes known ─────────────────────────────────
   useEffect(() => {
-    if (sessionLoading) return; // wait for session check to finish
-
-    if (!isAuthenticated) {
+    if (sessionLoading) return;
+    if (!isAuthenticated || !user?.id) {
       setProfile(null);
       setStatus("idle");
       return;
     }
-
     fetchProfile();
-  }, [isAuthenticated, sessionLoading, fetchProfile]);
+  }, [isAuthenticated, sessionLoading, user?.id, fetchProfile]);
 
-  // ── Update profile ────────────────────────────────────────────────────────
   const updateProfile = useCallback(
     async (payload: UpdateProfilePayload): Promise<UpdateProfileResult> => {
-      if (!isAuthenticated) {
-        return { success: false, error: "Not authenticated." };
-      }
+      if (!user?.id) return { success: false, error: "Not authenticated." };
 
-      // Filter out undefined keys so we only send changed fields
       const body = Object.fromEntries(
         Object.entries(payload).filter(([, v]) => v !== undefined),
       );
 
       if (Object.keys(body).length === 0) {
-        return { success: false, error: "No fields provided to update." };
+        return { success: false, error: "No fields provided." };
       }
 
       try {
-        const res = await fetch("/api/profile", {
-          method:      "PATCH",
-          credentials: "include",
-          headers:     { "Content-Type": "application/json" },
-          body:        JSON.stringify(body),
-        });
+        const supabase = createClient();
 
-        const data = await res.json().catch(() => ({}));
+        const { data, error: dbError } = await supabase
+          .from("users")
+          .update(body)
+          .eq("id", user.id)
+          .select()
+          .single();
 
-        if (!res.ok) {
-          const msg = data?.error ?? `Update failed with status ${res.status}.`;
-          console.error("[useProfile] updateProfile error:", msg);
-          return { success: false, error: msg };
+        if (dbError) {
+          console.error("[useProfile] update error:", dbError.message);
+          return { success: false, error: dbError.message };
         }
 
-        // Optimistically update local state with returned user
-        if (data?.user) {
-          setProfile(data.user as UserRow);
-          setStatus("success");
-        }
-
+        setProfile(data as UserRow);
+        setStatus("success");
         return { success: true };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error("[useProfile] Unexpected update error:", msg);
         return { success: false, error: msg };
       }
     },
-    [isAuthenticated],
+    [user?.id],
   );
 
-  // ── Public refresh ────────────────────────────────────────────────────────
   const refresh = useCallback(async () => {
     if (!isAuthenticated) return;
+    fetchingRef.current = false;
     await fetchProfile();
   }, [isAuthenticated, fetchProfile]);
 
