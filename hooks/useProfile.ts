@@ -50,7 +50,7 @@ export function useProfile(): UseProfileReturn {
     setError(null);
 
     try {
-      const supabase = createClient();
+      const supabase = createClient() as any;
 
       const { data, error: dbError } = await supabase
         .from("users")
@@ -124,7 +124,7 @@ export function useProfile(): UseProfileReturn {
       }
 
       try {
-        const supabase = createClient();
+        const supabase = createClient() as any;
 
         const { data, error: dbError } = await supabase
           .from("users")
