@@ -1,48 +1,64 @@
 import React from "react";
 
-interface GaugeProps {
-  value: number;
-  min: number;
-  max: number;
-  label: string;
+interface SpeedometerProps {
+  speed: number;
+  maxSpeed?: number;
   unit?: string;
-  size?: number;
-  redline?: number;
+  style?: React.CSSProperties;
+}
+
+const SIZE = 340;
+
+const CENTER = SIZE / 2;
+
+const START_ANGLE = -130;
+const END_ANGLE = 130;
+
+const RPM_MAX = 11;
+const SPEED_MAX_DEFAULT = 420;
+
+function polarToCartesian(
+  cx: number,
+  cy: number,
+  radius: number,
+  angle: number
+) {
+  const rad = (angle * Math.PI) / 180;
+
+  return {
+    x: cx + radius * Math.cos(rad),
+    y: cy + radius * Math.sin(rad),
+  };
 }
 
 function Gauge({
   value,
-  min,
   max,
   label,
   unit,
-  size = 320,
   redline,
-}: GaugeProps) {
-  const center = size / 2;
-  const radius = size * 0.39;
-
-  const startAngle = -130;
-  const endAngle = 130;
-
+}: {
+  value: number;
+  max: number;
+  label: string;
+  unit?: string;
+  redline?: number;
+}) {
   const percentage = Math.min(
-    Math.max((value - min) / (max - min), 0),
+    Math.max(value / max, 0),
     1
   );
 
   const angle =
-    startAngle +
-    percentage * (endAngle - startAngle);
+    START_ANGLE +
+    percentage * (END_ANGLE - START_ANGLE);
 
-  const needleLength = radius - 26;
-
-  const rad = (angle * Math.PI) / 180;
-
-  const needleX =
-    center + needleLength * Math.cos(rad);
-
-  const needleY =
-    center + needleLength * Math.sin(rad);
+  const needle = polarToCartesian(
+    CENTER,
+    CENTER,
+    108,
+    angle
+  );
 
   const ticks = [];
 
@@ -52,38 +68,36 @@ function Gauge({
     const tickPercent = i / totalTicks;
 
     const tickAngle =
-      startAngle +
-      tickPercent * (endAngle - startAngle);
+      START_ANGLE +
+      tickPercent *
+        (END_ANGLE - START_ANGLE);
 
-    const tickRad =
-      (tickAngle * Math.PI) / 180;
+    const outer = polarToCartesian(
+      CENTER,
+      CENTER,
+      132,
+      tickAngle
+    );
 
-    const isMajor = i % 7 === 0;
+    const inner = polarToCartesian(
+      CENTER,
+      CENTER,
+      i % 7 === 0 ? 106 : 118,
+      tickAngle
+    );
 
-    const outerRadius = radius;
-
-    const innerRadius =
-      radius - (isMajor ? 20 : 10);
-
-    const x1 =
-      center +
-      innerRadius * Math.cos(tickRad);
-
-    const y1 =
-      center +
-      innerRadius * Math.sin(tickRad);
-
-    const x2 =
-      center +
-      outerRadius * Math.cos(tickRad);
-
-    const y2 =
-      center +
-      outerRadius * Math.sin(tickRad);
+    const labelPos = polarToCartesian(
+      CENTER,
+      CENTER,
+      88,
+      tickAngle
+    );
 
     const tickValue = Math.round(
-      min + tickPercent * (max - min)
+      tickPercent * max
     );
+
+    const isMajor = i % 7 === 0;
 
     const isRedline =
       redline !== undefined &&
@@ -92,38 +106,34 @@ function Gauge({
     ticks.push(
       <g key={i}>
         <line
-          x1={x1}
-          y1={y1}
-          x2={x2}
-          y2={y2}
+          x1={inner.x}
+          y1={inner.y}
+          x2={outer.x}
+          y2={outer.y}
           stroke={
-            isRedline ? "#ff2d2d" : "#f2f2f2"
+            isRedline
+              ? "#ff2d2d"
+              : "#ffffff"
           }
           strokeWidth={isMajor ? 3 : 1.2}
+          opacity={isMajor ? 1 : 0.35}
           strokeLinecap="round"
-          opacity={isMajor ? 1 : 0.45}
         />
 
         {isMajor && (
           <text
-            x={
-              center +
-              (radius - 40) *
-                Math.cos(tickRad)
-            }
-            y={
-              center +
-              (radius - 40) *
-                Math.sin(tickRad)
-            }
+            x={labelPos.x}
+            y={labelPos.y}
             fill={
-              isRedline ? "#ff2d2d" : "#ffffff"
+              isRedline
+                ? "#ff2d2d"
+                : "#ffffff"
             }
             fontSize="18"
+            fontWeight="700"
             textAnchor="middle"
             dominantBaseline="central"
             fontFamily="Inter, sans-serif"
-            fontWeight="700"
           >
             {tickValue}
           </text>
@@ -133,165 +143,160 @@ function Gauge({
   }
 
   return (
-    <div
-      style={{
-        position: "relative",
-        width: size,
-        height: size,
-      }}
+    <svg
+      width={SIZE}
+      height={SIZE}
+      viewBox={`0 0 ${SIZE} ${SIZE}`}
     >
-      <svg
-        width={size}
-        height={size}
-        viewBox={`0 0 ${size} ${size}`}
+      {/* OUTER RING */}
+      <circle
+        cx={CENTER}
+        cy={CENTER}
+        r="146"
+        fill="#050505"
+        stroke="#2b2b2b"
+        strokeWidth="7"
+      />
+
+      {/* INNER FACE */}
+      <circle
+        cx={CENTER}
+        cy={CENTER}
+        r="134"
+        fill="#0b0b0d"
+      />
+
+      {/* INNER SHADOW */}
+      <circle
+        cx={CENTER}
+        cy={CENTER}
+        r="128"
+        fill="none"
+        stroke="rgba(255,255,255,0.03)"
+        strokeWidth="3"
+      />
+
+      {/* TICKS */}
+      {ticks}
+
+      {/* NEEDLE SHADOW */}
+      <line
+        x1={CENTER}
+        y1={CENTER}
+        x2={needle.x}
+        y2={needle.y}
+        stroke="rgba(0,0,0,0.45)"
+        strokeWidth="9"
+        strokeLinecap="round"
+      />
+
+      {/* NEEDLE */}
+      <line
+        x1={CENTER}
+        y1={CENTER}
+        x2={needle.x}
+        y2={needle.y}
+        stroke="#ff3b30"
+        strokeWidth="5"
+        strokeLinecap="round"
+        style={{
+          transition:
+            "all 0.08s linear",
+        }}
+      />
+
+      {/* NEEDLE CENTER */}
+      <circle
+        cx={CENTER}
+        cy={CENTER}
+        r="13"
+        fill="#111"
+        stroke="#ff3b30"
+        strokeWidth="4"
+      />
+
+      <circle
+        cx={CENTER}
+        cy={CENTER}
+        r="5"
+        fill="#ff3b30"
+      />
+
+      {/* VALUE */}
+      <text
+        x={CENTER}
+        y={CENTER + 58}
+        fill="#ffffff"
+        fontSize="44"
+        textAnchor="middle"
+        fontWeight="900"
+        fontFamily="Inter, sans-serif"
+        letterSpacing="1"
       >
-        {/* OUTER METAL RING */}
-        <circle
-          cx={center}
-          cy={center}
-          r={radius + 14}
-          fill="#050505"
-          stroke="#2d2d2d"
-          strokeWidth="6"
-        />
+        {Math.round(value)}
+      </text>
 
-        {/* INNER FACE */}
-        <circle
-          cx={center}
-          cy={center}
-          r={radius}
-          fill="#0c0c0f"
-        />
-
-        {/* GLOW */}
-        <circle
-          cx={center}
-          cy={center}
-          r={radius - 3}
-          fill="none"
-          stroke="rgba(255,255,255,0.04)"
-          strokeWidth="2"
-        />
-
-        {/* TICKS */}
-        {ticks}
-
-        {/* NEEDLE SHADOW */}
-        <line
-          x1={center}
-          y1={center}
-          x2={needleX}
-          y2={needleY}
-          stroke="rgba(0,0,0,0.5)"
-          strokeWidth="8"
-          strokeLinecap="round"
-        />
-
-        {/* NEEDLE */}
-        <line
-          x1={center}
-          y1={center}
-          x2={needleX}
-          y2={needleY}
-          stroke="#ff3b30"
-          strokeWidth="5"
-          strokeLinecap="round"
-          style={{
-            transition:
-              "all 0.08s linear",
-          }}
-        />
-
-        {/* NEEDLE CENTER */}
-        <circle
-          cx={center}
-          cy={center}
-          r="12"
-          fill="#111"
-          stroke="#ff3b30"
-          strokeWidth="4"
-        />
-
-        <circle
-          cx={center}
-          cy={center}
-          r="5"
-          fill="#ff3b30"
-        />
-
-        {/* DIGITAL VALUE */}
+      {/* UNIT */}
+      {unit && (
         <text
-          x={center}
-          y={center + 55}
-          fill="#ffffff"
-          fontSize="42"
+          x={CENTER}
+          y={CENTER + 92}
+          fill="#888"
+          fontSize="16"
           textAnchor="middle"
+          letterSpacing="5"
           fontFamily="Inter, sans-serif"
-          fontWeight="900"
-          letterSpacing="1"
         >
-          {Math.round(value)}
+          {unit}
         </text>
+      )}
 
-        {/* UNIT */}
-        {unit && (
-          <text
-            x={center}
-            y={center + 88}
-            fill="#777"
-            fontSize="17"
-            textAnchor="middle"
-            fontFamily="Inter, sans-serif"
-            letterSpacing="5"
-          >
-            {unit}
-          </text>
-        )}
-
-        {/* LABEL */}
-        <text
-          x={center}
-          y={center + 115}
-          fill="#555"
-          fontSize="14"
-          textAnchor="middle"
-          fontFamily="Inter, sans-serif"
-          letterSpacing="4"
-        >
-          {label}
-        </text>
-      </svg>
-    </div>
+      {/* LABEL */}
+      <text
+        x={CENTER}
+        y={CENTER + 118}
+        fill="#555"
+        fontSize="13"
+        textAnchor="middle"
+        letterSpacing="4"
+        fontFamily="Inter, sans-serif"
+      >
+        {label}
+      </text>
+    </svg>
   );
 }
 
-interface ClusterProps {
-  speed: number;
-  rpm: number;
-}
-
-export default function DualGaugeCluster({
+export function Speedometer({
   speed,
-  rpm,
-}: ClusterProps) {
+  maxSpeed = SPEED_MAX_DEFAULT,
+  unit = "KM/H",
+  style,
+}: SpeedometerProps) {
+  const fakeRPM =
+    Math.min(
+      2 +
+        (speed / maxSpeed) *
+          RPM_MAX,
+      RPM_MAX
+    );
+
   return (
     <div
       style={{
         display: "flex",
-        gap: 50,
+        gap: 40,
         justifyContent: "center",
         alignItems: "center",
-        minHeight: "100vh",
-        background:
-          "radial-gradient(circle at center, #111 0%, #000 70%)",
-        padding: 30,
         flexWrap: "wrap",
+        padding: 20,
+        width: "100%",
+        ...style,
       }}
     >
       {/* RPM */}
       <Gauge
-        value={rpm}
-        min={0}
+        value={fakeRPM}
         max={11}
         redline={9}
         label="RPM x1000"
@@ -300,10 +305,9 @@ export default function DualGaugeCluster({
       {/* SPEED */}
       <Gauge
         value={speed}
-        min={0}
-        max={420}
+        max={maxSpeed}
         label="TOP SPEED"
-        unit="KM/H"
+        unit={unit}
       />
     </div>
   );
