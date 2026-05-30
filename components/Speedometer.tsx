@@ -1,279 +1,310 @@
 import React from "react";
-import {
-  polarToXY,
-  arcPath,
-  speedoArcColor,
-} from "@/lib/utils";
-import {
-  C,
-  FONT,
-  SPEEDO_START_ANGLE,
-  SPEEDO_END_ANGLE,
-} from "@/lib/constants";
-import type { SpeedUnit } from "@/types";
 
-interface SpeedometerProps {
-  speed: number;
-  maxSpeed: number;
-  unit: SpeedUnit;
-  style?: React.CSSProperties;
+interface GaugeProps {
+  value: number;
+  min: number;
+  max: number;
+  label: string;
+  unit?: string;
+  size?: number;
+  redline?: number;
 }
 
-const CX = 120;
-const CY = 118;
-const RANGE = SPEEDO_END_ANGLE - SPEEDO_START_ANGLE;
-const TICK_COUNT = 36;
-
-export function Speedometer({
-  speed,
-  maxSpeed,
+function Gauge({
+  value,
+  min,
+  max,
+  label,
   unit,
-  style,
-}: SpeedometerProps) {
-  const pct = Math.min(Math.max(speed / maxSpeed, 0), 1);
-  const angle = SPEEDO_START_ANGLE + pct * RANGE;
-  const glow = speedoArcColor(pct);
+  size = 320,
+  redline,
+}: GaugeProps) {
+  const center = size / 2;
+  const radius = size * 0.39;
 
-  const tip = polarToXY(CX, CY, 82, angle);
-  const bL = polarToXY(CX, CY, 12, angle + 90);
-  const bR = polarToXY(CX, CY, 12, angle - 90);
+  const startAngle = -130;
+  const endAngle = 130;
 
-  const ticks = buildTicks(maxSpeed);
+  const percentage = Math.min(
+    Math.max((value - min) / (max - min), 0),
+    1
+  );
+
+  const angle =
+    startAngle +
+    percentage * (endAngle - startAngle);
+
+  const needleLength = radius - 26;
+
+  const rad = (angle * Math.PI) / 180;
+
+  const needleX =
+    center + needleLength * Math.cos(rad);
+
+  const needleY =
+    center + needleLength * Math.sin(rad);
+
+  const ticks = [];
+
+  const totalTicks = 56;
+
+  for (let i = 0; i <= totalTicks; i++) {
+    const tickPercent = i / totalTicks;
+
+    const tickAngle =
+      startAngle +
+      tickPercent * (endAngle - startAngle);
+
+    const tickRad =
+      (tickAngle * Math.PI) / 180;
+
+    const isMajor = i % 7 === 0;
+
+    const outerRadius = radius;
+
+    const innerRadius =
+      radius - (isMajor ? 20 : 10);
+
+    const x1 =
+      center +
+      innerRadius * Math.cos(tickRad);
+
+    const y1 =
+      center +
+      innerRadius * Math.sin(tickRad);
+
+    const x2 =
+      center +
+      outerRadius * Math.cos(tickRad);
+
+    const y2 =
+      center +
+      outerRadius * Math.sin(tickRad);
+
+    const tickValue = Math.round(
+      min + tickPercent * (max - min)
+    );
+
+    const isRedline =
+      redline !== undefined &&
+      tickValue >= redline;
+
+    ticks.push(
+      <g key={i}>
+        <line
+          x1={x1}
+          y1={y1}
+          x2={x2}
+          y2={y2}
+          stroke={
+            isRedline ? "#ff2d2d" : "#f2f2f2"
+          }
+          strokeWidth={isMajor ? 3 : 1.2}
+          strokeLinecap="round"
+          opacity={isMajor ? 1 : 0.45}
+        />
+
+        {isMajor && (
+          <text
+            x={
+              center +
+              (radius - 40) *
+                Math.cos(tickRad)
+            }
+            y={
+              center +
+              (radius - 40) *
+                Math.sin(tickRad)
+            }
+            fill={
+              isRedline ? "#ff2d2d" : "#ffffff"
+            }
+            fontSize="18"
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontFamily="Inter, sans-serif"
+            fontWeight="700"
+          >
+            {tickValue}
+          </text>
+        )}
+      </g>
+    );
+  }
 
   return (
-    <svg
-      viewBox="0 0 240 230"
+    <div
       style={{
-        width: "100%",
-        maxWidth: 430,
-        overflow: "visible",
-        ...style,
+        position: "relative",
+        width: size,
+        height: size,
       }}
-      aria-label={`Speedometer: ${Math.round(speed)} ${unit === "mph" ? "mph" : "km/h"}`}
-      role="img"
     >
-      <defs>
-        <linearGradient id="ra-ring" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#242433" />
-          <stop offset="50%" stopColor="#0F1017" />
-          <stop offset="100%" stopColor="#3B3B50" />
-        </linearGradient>
-
-        <linearGradient id="ra-needle" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#FFB02E" />
-          <stop offset="55%" stopColor="#FF5A1F" />
-          <stop offset="100%" stopColor="#C91E00" />
-        </linearGradient>
-
-        <radialGradient id="ra-core" cx="50%" cy="48%" r="55%">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.08)" />
-          <stop offset="65%" stopColor="rgba(255,255,255,0.02)" />
-          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-        </radialGradient>
-
-        <filter id="ra-glow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="3.5" result="blur" />
-          <feColorMatrix
-            in="blur"
-            type="matrix"
-            values="
-              1 0 0 0 0
-              0 0.4 0 0 0
-              0 0 0.1 0 0
-              0 0 0 1 0"
-          />
-        </filter>
-
-        <filter id="ra-soft-glow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="8" />
-        </filter>
-      </defs>
-
-      <rect
-        x="18"
-        y="18"
-        width="204"
-        height="194"
-        rx="24"
-        fill="#090A10"
-        stroke="rgba(255,255,255,0.06)"
-      />
-
-      <path
-        d={arcPath(CX, CY, 96, SPEEDO_START_ANGLE, SPEEDO_END_ANGLE)}
-        fill="none"
-        stroke="url(#ra-ring)"
-        strokeWidth="10"
-        strokeLinecap="round"
-      />
-
-      <path
-        d={arcPath(CX, CY, 88, SPEEDO_START_ANGLE, SPEEDO_END_ANGLE)}
-        fill="none"
-        stroke="#171824"
-        strokeWidth="8"
-        strokeLinecap="round"
-      />
-
-      <path
-        d={arcPath(CX, CY, 88, SPEEDO_START_ANGLE, angle)}
-        fill="none"
-        stroke={glow}
-        strokeWidth="8"
-        strokeLinecap="round"
-        style={{
-          filter: "url(#ra-glow)",
-          transition: "stroke 0.15s linear",
-        }}
-      />
-
-      <path
-        d={arcPath(CX, CY, 88, SPEEDO_START_ANGLE, angle)}
-        fill="none"
-        stroke="rgba(255,255,255,0.22)"
-        strokeWidth="2"
-        strokeLinecap="round"
-        style={{
-          filter: "url(#ra-soft-glow)",
-          transition: "stroke 0.15s linear",
-        }}
-      />
-
-      <circle cx={CX} cy={CY} r="58" fill="url(#ra-core)" />
-
-      {ticks.map((tick) => (
-        <line
-          key={tick.index}
-          x1={tick.inner.x}
-          y1={tick.inner.y}
-          x2={tick.outer.x}
-          y2={tick.outer.y}
-          stroke={tick.major ? "#F4F1EA" : "#4B4B63"}
-          strokeWidth={tick.major ? 2 : 1}
-          strokeLinecap="round"
-          opacity={tick.major ? 1 : 0.45}
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+      >
+        {/* OUTER METAL RING */}
+        <circle
+          cx={center}
+          cy={center}
+          r={radius + 14}
+          fill="#050505"
+          stroke="#2d2d2d"
+          strokeWidth="6"
         />
-      ))}
 
-      {ticks
-        .filter((t) => t.major)
-        .map((tick) => {
-          const p = polarToXY(CX, CY, 72, tick.angle);
-          return (
-            <text
-              key={`lbl-${tick.index}`}
-              x={p.x}
-              y={p.y}
-              fill="#8B8DA7"
-              fontSize="7"
-              textAnchor="middle"
-              dominantBaseline="central"
-              fontFamily={FONT.mono}
-            >
-              {tick.label}
-            </text>
-          );
-        })}
+        {/* INNER FACE */}
+        <circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="#0c0c0f"
+        />
 
-      <polygon
-        points={`${tip.x},${tip.y} ${bL.x},${bL.y} ${bR.x},${bR.y}`}
-        fill="url(#ra-needle)"
-        style={{
-          filter: "url(#ra-glow)",
-          transition: "all 0.12s linear",
-        }}
-      />
+        {/* GLOW */}
+        <circle
+          cx={center}
+          cy={center}
+          r={radius - 3}
+          fill="none"
+          stroke="rgba(255,255,255,0.04)"
+          strokeWidth="2"
+        />
 
-      <circle cx={CX} cy={CY} r="12" fill="#0B0C12" stroke={glow} strokeWidth="2.5" />
-      <circle cx={CX} cy={CY} r="5" fill={glow} />
+        {/* TICKS */}
+        {ticks}
 
-      <text
-        x={CX}
-        y="150"
-        fill={C.text}
-        fontSize="40"
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontFamily={FONT.display}
-        fontWeight="900"
-        letterSpacing="1"
-        style={{
-          filter: "drop-shadow(0 0 10px rgba(255,255,255,0.14))",
-        }}
-      >
-        {Math.round(speed)}
-      </text>
+        {/* NEEDLE SHADOW */}
+        <line
+          x1={center}
+          y1={center}
+          x2={needleX}
+          y2={needleY}
+          stroke="rgba(0,0,0,0.5)"
+          strokeWidth="8"
+          strokeLinecap="round"
+        />
 
-      <text
-        x={CX}
-        y="172"
-        fill={C.muted}
-        fontSize="9"
-        textAnchor="middle"
-        fontFamily={FONT.body}
-        fontWeight="700"
-        letterSpacing="4"
-      >
-        {unit === "mph" ? "MPH" : "KM/H"}
-      </text>
+        {/* NEEDLE */}
+        <line
+          x1={center}
+          y1={center}
+          x2={needleX}
+          y2={needleY}
+          stroke="#ff3b30"
+          strokeWidth="5"
+          strokeLinecap="round"
+          style={{
+            transition:
+              "all 0.08s linear",
+          }}
+        />
 
-      <text
-        x={CX}
-        y="192"
-        fill={C.dim}
-        fontSize="7"
-        textAnchor="middle"
-        fontFamily={FONT.mono}
-        letterSpacing="5"
-      >
-        NO LIFT • NO MERCY
-      </text>
+        {/* NEEDLE CENTER */}
+        <circle
+          cx={center}
+          cy={center}
+          r="12"
+          fill="#111"
+          stroke="#ff3b30"
+          strokeWidth="4"
+        />
 
-      <rect
-        x="54"
-        y="202"
-        width="132"
-        height="6"
-        rx="999"
-        fill="#161824"
-      />
-      <rect
-        x="54"
-        y="202"
-        width={132 * pct}
-        height="6"
-        rx="999"
-        fill={glow}
-        style={{
-          filter: `drop-shadow(0 0 9px ${glow})`,
-          transition: "all 0.1s linear",
-        }}
-      />
-    </svg>
+        <circle
+          cx={center}
+          cy={center}
+          r="5"
+          fill="#ff3b30"
+        />
+
+        {/* DIGITAL VALUE */}
+        <text
+          x={center}
+          y={center + 55}
+          fill="#ffffff"
+          fontSize="42"
+          textAnchor="middle"
+          fontFamily="Inter, sans-serif"
+          fontWeight="900"
+          letterSpacing="1"
+        >
+          {Math.round(value)}
+        </text>
+
+        {/* UNIT */}
+        {unit && (
+          <text
+            x={center}
+            y={center + 88}
+            fill="#777"
+            fontSize="17"
+            textAnchor="middle"
+            fontFamily="Inter, sans-serif"
+            letterSpacing="5"
+          >
+            {unit}
+          </text>
+        )}
+
+        {/* LABEL */}
+        <text
+          x={center}
+          y={center + 115}
+          fill="#555"
+          fontSize="14"
+          textAnchor="middle"
+          fontFamily="Inter, sans-serif"
+          letterSpacing="4"
+        >
+          {label}
+        </text>
+      </svg>
+    </div>
   );
 }
 
-interface TickData {
-  index: number;
-  angle: number;
-  major: boolean;
-  label: string;
-  inner: { x: number; y: number };
-  outer: { x: number; y: number };
+interface ClusterProps {
+  speed: number;
+  rpm: number;
 }
 
-function buildTicks(maxSpeed: number): TickData[] {
-  return Array.from({ length: TICK_COUNT + 1 }, (_, i) => {
-    const angle = SPEEDO_START_ANGLE + (i / TICK_COUNT) * RANGE;
-    const major = i % 6 === 0;
+export default function DualGaugeCluster({
+  speed,
+  rpm,
+}: ClusterProps) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 50,
+        justifyContent: "center",
+        alignItems: "center",
+        minHeight: "100vh",
+        background:
+          "radial-gradient(circle at center, #111 0%, #000 70%)",
+        padding: 30,
+        flexWrap: "wrap",
+      }}
+    >
+      {/* RPM */}
+      <Gauge
+        value={rpm}
+        min={0}
+        max={11}
+        redline={9}
+        label="RPM x1000"
+      />
 
-    return {
-      index: i,
-      angle,
-      major,
-      label: String(Math.round((i / TICK_COUNT) * maxSpeed)),
-      inner: polarToXY(CX, CY, major ? 79 : 82, angle),
-      outer: polarToXY(CX, CY, major ? 90 : 86, angle),
-    };
-  });
+      {/* SPEED */}
+      <Gauge
+        value={speed}
+        min={0}
+        max={420}
+        label="TOP SPEED"
+        unit="KM/H"
+      />
+    </div>
+  );
 }
