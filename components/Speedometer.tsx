@@ -1,4 +1,8 @@
-// components/Speedometer.tsx
+// ─────────────────────────────────────────────────────────────
+// CYBER STREET SPEEDOMETER — RACERS ARENA
+// aggressive neon / AMG + Cyberpunk inspired
+// replace your current Speedometer component with this
+// ─────────────────────────────────────────────────────────────
 
 import React from "react";
 import {
@@ -6,81 +10,99 @@ import {
   arcPath,
   speedoArcColor,
 } from "@/lib/utils";
+
 import {
   C,
   FONT,
   SPEEDO_START_ANGLE,
   SPEEDO_END_ANGLE,
 } from "@/lib/constants";
+
 import type { SpeedUnit } from "@/types";
 
-// ─── TYPES ────────────────────────────────────────────────────────────────────
-
 interface SpeedometerProps {
-  /** Current speed in the chosen display unit (km/h or mph). */
-  speed:    number;
-  /** Maximum value the gauge represents (300 km/h or 200 mph). */
+  speed: number;
   maxSpeed: number;
-  /** Display unit label shown beneath the readout. */
-  unit:     SpeedUnit;
-  /** Optional inline style for the wrapping element. */
-  style?:   React.CSSProperties;
+  unit: SpeedUnit;
+  style?: React.CSSProperties;
 }
 
-// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const CX = 100;
+const CY = 100;
+const RANGE = SPEEDO_END_ANGLE - SPEEDO_START_ANGLE;
+const TICK_COUNT = 40;
 
-const CX    = 100;  // SVG centre-x
-const CY    = 100;  // SVG centre-y
-const RANGE = SPEEDO_END_ANGLE - SPEEDO_START_ANGLE;  // 260°
+export function Speedometer({
+  speed,
+  maxSpeed,
+  unit,
+  style,
+}: SpeedometerProps) {
+  const pct = Math.min(Math.max(speed / maxSpeed, 0), 1);
 
-/** Number of tick marks around the dial (0 … 30 → 31 ticks). */
-const TICK_COUNT = 30;
-
-// ─── COMPONENT ────────────────────────────────────────────────────────────────
-
-export function Speedometer({ speed, maxSpeed, unit, style }: SpeedometerProps) {
-  const pct   = Math.min(Math.max(speed / maxSpeed, 0), 1);
   const angle = SPEEDO_START_ANGLE + pct * RANGE;
 
-  // Needle tip and base points
-  const tip  = polarToXY(CX, CY, 72, angle);
-  const bL   = polarToXY(CX, CY, 10, angle + 90);
-  const bR   = polarToXY(CX, CY, 10, angle - 90);
+  const tip = polarToXY(CX, CY, 70, angle);
+  const bL = polarToXY(CX, CY, 9, angle + 90);
+  const bR = polarToXY(CX, CY, 9, angle - 90);
 
-  // Arc colour transitions green → gold → red
-  const arcColor = speedoArcColor(pct);
+  const glow = speedoArcColor(pct);
 
-  // Build tick data once per render
   const ticks = buildTicks(maxSpeed);
 
   return (
     <svg
-      viewBox="0 0 200 180"
-      style={{ width: "100%", maxWidth: 340, ...style }}
-      aria-label={`Speedometer: ${Math.round(speed)} ${unit === "mph" ? "mph" : "km/h"}`}
+      viewBox="0 0 200 190"
+      style={{
+        width: "100%",
+        maxWidth: 380,
+        overflow: "visible",
+        filter: `drop-shadow(0 0 12px ${glow})`,
+        ...style,
+      }}
     >
-      {/* ── Background track ── */}
-      <path
-        d={arcPath(CX, CY, 90, SPEEDO_START_ANGLE, SPEEDO_END_ANGLE)}
+      {/* OUTER RING */}
+      <circle
+        cx={CX}
+        cy={CY}
+        r="92"
         fill="none"
-        stroke={C.dim}
-        strokeWidth="3"
+        stroke="#14141f"
+        strokeWidth="10"
+      />
+
+      {/* GLOW TRACK */}
+      <path
+        d={arcPath(CX, CY, 88, SPEEDO_START_ANGLE, SPEEDO_END_ANGLE)}
+        fill="none"
+        stroke="#232336"
+        strokeWidth="5"
         strokeLinecap="round"
       />
 
-      {/* ── Coloured progress arc ── */}
-      {pct > 0.002 && (
-        <path
-          d={arcPath(CX, CY, 90, SPEEDO_START_ANGLE, angle)}
-          fill="none"
-          stroke={arcColor}
-          strokeWidth="3.5"
-          strokeLinecap="round"
-          style={{ transition: "stroke 0.2s" }}
-        />
-      )}
+      {/* ACTIVE ARC */}
+      <path
+        d={arcPath(CX, CY, 88, SPEEDO_START_ANGLE, angle)}
+        fill="none"
+        stroke={glow}
+        strokeWidth="6"
+        strokeLinecap="round"
+        style={{
+          filter: `drop-shadow(0 0 10px ${glow})`,
+          transition: "all .15s linear",
+        }}
+      />
 
-      {/* ── Tick marks ── */}
+      {/* INNER GLOW */}
+      <circle
+        cx={CX}
+        cy={CY}
+        r="60"
+        fill="rgba(255,255,255,0.02)"
+        stroke="rgba(255,255,255,0.03)"
+      />
+
+      {/* TICKS */}
       {ticks.map((tick) => (
         <line
           key={tick.index}
@@ -88,22 +110,24 @@ export function Speedometer({ speed, maxSpeed, unit, style }: SpeedometerProps) 
           y1={tick.inner.y}
           x2={tick.outer.x}
           y2={tick.outer.y}
-          stroke={tick.major ? C.text : C.dim}
-          strokeWidth={tick.major ? 1.5 : 0.8}
+          stroke={tick.major ? "#ffffff" : "#44445f"}
+          strokeWidth={tick.major ? 2 : 1}
+          opacity={tick.major ? 1 : 0.4}
         />
       ))}
 
-      {/* ── Tick labels (major ticks only) ── */}
+      {/* LABELS */}
       {ticks
         .filter((t) => t.major)
         .map((tick) => {
-          const lp = polarToXY(CX, CY, 68, tick.angle);
+          const p = polarToXY(CX, CY, 67, tick.angle);
+
           return (
             <text
-              key={`lbl-${tick.index}`}
-              x={lp.x}
-              y={lp.y}
-              fill={C.muted}
+              key={tick.index}
+              x={p.x}
+              y={p.y}
+              fill="#8b8ba7"
               fontSize="7"
               textAnchor="middle"
               dominantBaseline="central"
@@ -114,51 +138,88 @@ export function Speedometer({ speed, maxSpeed, unit, style }: SpeedometerProps) 
           );
         })}
 
-      {/* ── Needle ── */}
+      {/* NEEDLE GLOW */}
       <polygon
         points={`${tip.x},${tip.y} ${bL.x},${bL.y} ${bR.x},${bR.y}`}
-        fill={C.accent}
-        opacity="0.95"
-        style={{ transition: "all 0.12s linear" }}
+        fill={glow}
+        style={{
+          filter: `drop-shadow(0 0 10px ${glow})`,
+          transition: "all .08s linear",
+        }}
       />
 
-      {/* ── Hub cap ── */}
-      <circle cx={CX} cy={CY} r="7" fill={C.card} stroke={C.accent} strokeWidth="2" />
-      <circle cx={CX} cy={CY} r="3" fill={C.accent} />
+      {/* HUB */}
+      <circle
+        cx={CX}
+        cy={CY}
+        r="10"
+        fill="#0d0d14"
+        stroke={glow}
+        strokeWidth="3"
+      />
 
-      {/* ── Digital speed readout ── */}
+      <circle
+        cx={CX}
+        cy={CY}
+        r="4"
+        fill={glow}
+      />
+
+      {/* SPEED */}
       <text
         x={CX}
-        y="140"
-        fill={C.text}
-        fontSize="32"
+        y="132"
+        fill="#ffffff"
+        fontSize="34"
         textAnchor="middle"
-        dominantBaseline="central"
         fontFamily={FONT.display}
+        fontWeight="900"
         letterSpacing="2"
-        style={{ transition: "all 0.1s" }}
+        style={{
+          filter: "drop-shadow(0 0 8px rgba(255,255,255,.2))",
+        }}
       >
         {Math.round(speed)}
       </text>
 
-      {/* ── Unit label ── */}
+      {/* UNIT */}
       <text
         x={CX}
-        y="158"
-        fill={C.muted}
-        fontSize="9"
+        y="150"
+        fill="#8b8ba7"
+        fontSize="10"
         textAnchor="middle"
         fontFamily={FONT.body}
-        fontWeight="700"
-        letterSpacing="3"
+        letterSpacing="5"
       >
         {unit === "mph" ? "MPH" : "KM/H"}
       </text>
+
+      {/* BOOST BAR */}
+      <rect
+        x="35"
+        y="170"
+        width="130"
+        height="5"
+        rx="999"
+        fill="#181824"
+      />
+
+      <rect
+        x="35"
+        y="170"
+        width={130 * pct}
+        height="5"
+        rx="999"
+        fill={glow}
+        style={{
+          transition: "all .1s linear",
+          filter: `drop-shadow(0 0 8px ${glow})`,
+        }}
+      />
     </svg>
   );
 }
-
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
 
 interface TickData {
   index: number;
@@ -171,14 +232,24 @@ interface TickData {
 
 function buildTicks(maxSpeed: number): TickData[] {
   return Array.from({ length: TICK_COUNT + 1 }, (_, i) => {
-    const angle = SPEEDO_START_ANGLE + (i / TICK_COUNT) * RANGE;
+    const angle =
+      SPEEDO_START_ANGLE + (i / TICK_COUNT) * RANGE;
+
     const major = i % 5 === 0;
+
     return {
       index: i,
       angle,
       major,
-      label: String(Math.round((i / TICK_COUNT) * maxSpeed)),
-      inner: polarToXY(CX, CY, major ? 78 : 80, angle),
+      label: String(
+        Math.round((i / TICK_COUNT) * maxSpeed)
+      ),
+      inner: polarToXY(
+        CX,
+        CY,
+        major ? 74 : 78,
+        angle
+      ),
       outer: polarToXY(CX, CY, 88, angle),
     };
   });
