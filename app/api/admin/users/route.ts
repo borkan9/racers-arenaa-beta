@@ -4,7 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/requireAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-type AdminUserAction = "suspend" | "restore";
+type AdminUserAction =
+  | "suspend"
+  | "restore"
+  | "verify"
+  | "reject_verification";
 
 type RawClient = {
   from: (table: string) => any;
@@ -43,9 +47,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  if (action !== "suspend" && action !== "restore") {
+  if (
+    action !== "suspend"
+    && action !== "restore"
+    && action !== "verify"
+    && action !== "reject_verification"
+  ) {
     return NextResponse.json(
-      { error: 'action must be either "suspend" or "restore".' },
+      {
+        error: "action must be one of: suspend, restore, verify, reject_verification.",
+      },
       { status: 400 },
     );
   }
@@ -57,9 +68,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const role = (action as AdminUserAction) === "suspend"
+  const adminAction = action as AdminUserAction;
+  const role = adminAction === "suspend"
     ? "suspended"
-    : "user";
+    : adminAction === "verify"
+      ? "verified"
+      : "user";
 
   const raw = supabaseAdmin as unknown as RawClient;
 
