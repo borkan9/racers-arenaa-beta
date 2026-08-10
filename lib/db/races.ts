@@ -115,7 +115,7 @@ export async function updateRace(
   id:      string,
   payload: RaceUpdate,
 ): Promise<DbResult<RaceRow>> {
-  const raw = await getRawClient();
+  const raw = supabaseAdmin as unknown as RawClient;
 
   const { data, error } = await raw
     .from("races")
