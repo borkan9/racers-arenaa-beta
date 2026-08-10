@@ -251,13 +251,17 @@ function RacersTab() {
   useEffect(() => { fetchRacers(); }, [fetchRacers]);
 
   const handleSuspend = async (userId: string, suspend: boolean) => {
-    const supabase = createClient() as any;
-    const { error } = await supabase
-      .from("users")
-      .update({ role: suspend ? "suspended" : "user" })
-      .eq("id", userId);
+    const response = await fetch("/api/admin/users", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        user_id: userId,
+        action:  suspend ? "suspend" : "restore",
+      }),
+    });
+    const result = await response.json();
 
-    if (error) { alert("Failed: " + error.message); return; }
+    if (!response.ok) { alert("Failed: " + result.error); return; }
     setRacers((prev) => prev.map((r) => r.id === userId ? { ...r, role: suspend ? "suspended" : "user" } : r));
   };
 
