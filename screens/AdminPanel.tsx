@@ -102,17 +102,15 @@ function FlaggedTab() {
   const fetchFlagged = useCallback(async () => {
     setLoading(true);
     try {
-      const supabase = createClient() as any;
-      const { data, error } = await supabase
-        .from("races")
-        .select("*, users ( username, avatar )")
-        .eq("flagged", true)
-        .eq("reviewed", false)
-        .neq("status", "REMOVED")
-        .order("created_at", { ascending: false });
+      const response = await fetch("/api/admin/flagged");
+      const result   = await response.json();
 
-      if (error) { console.error("[Admin/Flagged]", error.message); return; }
-      setRaces(data ?? []);
+      if (!response.ok) {
+        console.error("[Admin/Flagged]", result.error);
+        return;
+      }
+
+      setRaces(result.races ?? []);
     } finally {
       setLoading(false);
     }
@@ -121,17 +119,14 @@ function FlaggedTab() {
   useEffect(() => { fetchFlagged(); }, [fetchFlagged]);
 
   const handleAction = async (raceId: string, action: "approve" | "remove") => {
-    const supabase = createClient() as any;
-    const update   = action === "approve"
-      ? { flagged: false, reviewed: true, status: "FINISHED" }
-      : { reviewed: true, status: "REMOVED" };
+    const response = await fetch("/api/admin/flagged", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ race_id: raceId, action }),
+    });
+    const result = await response.json();
 
-    const { error } = await supabase
-      .from("races")
-      .update(update)
-      .eq("id", raceId);
-
-    if (error) { alert("Failed: " + error.message); return; }
+    if (!response.ok) { alert("Failed: " + result.error); return; }
     setRaces((prev) => prev.filter((r) => r.id !== raceId));
   };
 
