@@ -1,5 +1,6 @@
 // lib/db/races.ts
 
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { RaceRow, RaceInsert, RaceUpdate } from "@/types/database.types";
 
@@ -23,7 +24,7 @@ async function getRawClient(): Promise<RawClient> {
 }
 
 export async function createRace(payload: RaceInsert): Promise<DbResult<RaceRow>> {
-  const raw = await getRawClient();
+  const raw = supabaseAdmin as unknown as RawClient;
 
   const { data, error } = await raw
     .from("races")
