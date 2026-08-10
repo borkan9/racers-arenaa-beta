@@ -6,6 +6,10 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 type AdminUserAction = "suspend" | "restore";
 
+type RawClient = {
+  from: (table: string) => any;
+};
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const guard = await requireAdmin();
   if (!guard.ok) return guard.response;
@@ -57,7 +61,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     ? "suspended"
     : "user";
 
-  const { data: user, error } = await supabaseAdmin
+  const raw = supabaseAdmin as unknown as RawClient;
+
+  const { data: user, error } = await raw
     .from("users")
     .update({ role })
     .eq("id", user_id)
