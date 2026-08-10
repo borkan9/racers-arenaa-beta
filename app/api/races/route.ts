@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse }          from "next/server";
 import { requireAuth }                         from "@/lib/auth/requireAuth";
 import { createRace, getRacesByUserId }        from "@/lib/db/races";
+import { submitRaceToLeaderboard }               from "@/lib/db/leaderboard";
 import {
   validate,
   CreateRaceSchema,
@@ -88,7 +89,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // 7. Log flagged races for visibility
+  // 7. Update leaderboard without failing the saved race
+  try {
+    await submitRaceToLeaderboard({
+      userId:     guard.userId,
+      raceId:     race.id,
+      mode:       race.mode,
+      maxSpeed:   race.max_speed,
+      durationMs: race.duration_ms,
+      distanceKm: race.distance_km,
+      isPrivate:  race.is_private,
+      flagged:    race.flagged,
+    });
+  } catch (leaderboardError) {
+    console.error(
+      `[api/races] Failed to update leaderboard for race ${race.id}:`,
+      leaderboardError,
+    );
+  }
+
+  // 8. Log flagged races for visibility
   if (cheatResult.flagged) {
     console.warn(
       `[api/races] Race ${race.id} flagged for user ${guard.userId}. Reason: ${cheatResult.reason}. Confidence: ${cheatResult.confidence}`,
