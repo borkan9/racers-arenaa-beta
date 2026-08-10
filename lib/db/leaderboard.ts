@@ -1,5 +1,6 @@
 // lib/db/leaderboard.ts
 
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
   LeaderboardEntryRow,
@@ -97,7 +98,7 @@ export async function getUserWeeklyEntry(
 export async function upsertLeaderboardEntry(
   payload: LeaderboardEntryInsert,
 ): Promise<DbResult<LeaderboardEntryRow>> {
-  const raw       = await getRawClient();
+  const raw       = supabaseAdmin as unknown as RawClient;
   const ascending = payload.board_type === "BEST_TIME";
 
   const { data: existing, error: fetchError } = await raw
