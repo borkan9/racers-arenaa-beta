@@ -412,14 +412,12 @@ function BoardTab() {
   const handleReset = async () => {
     setResetting(true);
     try {
-      const supabase = createClient() as any;
-      const weekStart = getWeekStart();
-      const { error } = await supabase
-        .from("leaderboard_entries")
-        .delete()
-        .eq("week_start", weekStart);
+      const response = await fetch("/api/admin/leaderboard", {
+        method: "POST",
+      });
+      const result = await response.json();
 
-      if (error) { alert("Failed: " + error.message); return; }
+      if (!response.ok) { alert("Failed: " + result.error); return; }
       setDone(true);
       setConfirming(false);
       setCount(0);
