@@ -340,13 +340,17 @@ function VerifyTab() {
   useEffect(() => { fetchRequests(); }, [fetchRequests]);
 
   const handleVerify = async (userId: string, approve: boolean) => {
-    const supabase = createClient() as any;
-    const { error } = await supabase
-      .from("users")
-      .update({ role: approve ? "verified" : "user" })
-      .eq("id", userId);
+    const response = await fetch("/api/admin/users", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        user_id: userId,
+        action:  approve ? "verify" : "reject_verification",
+      }),
+    });
+    const result = await response.json();
 
-    if (error) { alert("Failed: " + error.message); return; }
+    if (!response.ok) { alert("Failed: " + result.error); return; }
     setRequests((prev) => prev.filter((r) => r.id !== userId));
   };
 
