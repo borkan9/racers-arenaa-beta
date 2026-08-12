@@ -8,7 +8,18 @@
 
 // ─── ROOT DATABASE TYPE ───────────────────────────────────────────────────────
 
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
 export interface Database {
+  __InternalSupabase: {
+    PostgrestVersion: "14.5";
+  };
   public: {
     Tables: {
 
@@ -20,13 +31,17 @@ export interface Database {
           username:   string | null;
           avatar:     string | null; // public URL to avatar image
           bio:        string | null;
+          role:       string;
+          profile_locked: boolean;
         };
         Insert: {
-          id:         string;        // must match auth.users.id
+          id?:        string;
           created_at?: string;       // defaults to now()
           username?:  string | null;
           avatar?:    string | null;
           bio?:       string | null;
+          role?:      string;
+          profile_locked?: boolean;
         };
         Update: {
           id?:        string;
@@ -34,7 +49,10 @@ export interface Database {
           username?:  string | null;
           avatar?:    string | null;
           bio?:       string | null;
+          role?:      string;
+          profile_locked?: boolean;
         };
+        Relationships: [];
       };
 
       // ── races ──────────────────────────────────────────────────────────────
@@ -56,34 +74,34 @@ export interface Database {
           start_lng:    number | null;
           finish_lat:   number | null;
           finish_lng:   number | null;
-          route_points: RoutePoint[] | null; // jsonb
+          route_points: Json | null;
           is_private:   boolean;
           flagged:      boolean;
           flag_reason:  string | null;
           reviewed:     boolean;
-          status:       RaceStatus;
+          status:       string;
         };
         Insert: {
           id?:          string;
           created_at?:  string;
           user_id:      string;
           mode:         string;
-          unit:         string;
+          unit?:        string;
           duration_ms?: number | null;
-          max_speed:    number;
-          avg_speed:    number;
-          distance_km:  number;
+          max_speed?:   number;
+          avg_speed?:   number;
+          distance_km?: number;
           peak_accel?:  number;
           start_lat?:   number | null;
           start_lng?:   number | null;
           finish_lat?:  number | null;
           finish_lng?:  number | null;
-          route_points?: RoutePoint[] | null;
+          route_points?: Json | null;
           is_private?:  boolean;
           flagged?:     boolean;
           flag_reason?: string | null;
           reviewed?:    boolean;
-          status?:      RaceStatus;
+          status?:      string;
         };
         Update: {
           id?:          string;
@@ -100,13 +118,22 @@ export interface Database {
           start_lng?:   number | null;
           finish_lat?:  number | null;
           finish_lng?:  number | null;
-          route_points?: RoutePoint[] | null;
+          route_points?: Json | null;
           is_private?:  boolean;
           flagged?:     boolean;
           flag_reason?: string | null;
           reviewed?:    boolean;
-          status?:      RaceStatus;
+          status?:      string;
         };
+        Relationships: [
+          {
+            foreignKeyName: "races_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
       };
 
       // ── leaderboard_entries ────────────────────────────────────────────────
@@ -119,7 +146,7 @@ export interface Database {
           race_id:      string;   // fk → races.id
           week_start:   string;   // date ISO "YYYY-MM-DD"
           mode:         string;
-          board_type:   BoardType;
+          board_type:   string;
           value:        number;   // speed (km/h) or time (ms)
         };
         Insert: {
@@ -129,7 +156,7 @@ export interface Database {
           race_id:      string;
           week_start:   string;
           mode:         string;
-          board_type:   BoardType;
+          board_type:   string;
           value:        number;
         };
         Update: {
@@ -139,9 +166,25 @@ export interface Database {
           race_id?:     string;
           week_start?:  string;
           mode?:        string;
-          board_type?:  BoardType;
+          board_type?:  string;
           value?:       number;
         };
+        Relationships: [
+          {
+            foreignKeyName: "leaderboard_entries_race_id_fkey";
+            columns: ["race_id"];
+            isOneToOne: false;
+            referencedRelation: "races";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "leaderboard_entries_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
       };
 
     };
@@ -149,6 +192,7 @@ export interface Database {
     Views:   Record<string, never>; // add views here as you create them
     Functions: Record<string, never>; // add RPC functions here
     Enums:   Record<string, never>;
+    CompositeTypes: Record<string, never>;
   };
 }
 
