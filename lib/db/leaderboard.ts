@@ -6,6 +6,7 @@ import type {
   LeaderboardEntryRow,
   LeaderboardEntryInsert,
   BoardType,
+  RaceMode,
 } from "@/types/database.types";
 
 export interface DbResult<T> {
@@ -44,6 +45,7 @@ export function getWeekStart(date: Date = new Date()): string {
 
 export async function getWeeklyLeaderboard(
   boardType:  BoardType,
+  mode:       RaceMode,
   weekStart?: string,
   limit:      number = 50,
 ): Promise<DbResult<RankedEntry[]>> {
@@ -55,6 +57,7 @@ export async function getWeeklyLeaderboard(
     .from("leaderboard_entries")
     .select(`*, users ( id, username, avatar )`)
     .eq("week_start", week)
+    .eq("mode", mode)
     .eq("board_type", boardType)
     .order("value", { ascending })
     .limit(limit);
@@ -74,6 +77,7 @@ export async function getWeeklyLeaderboard(
 export async function getUserWeeklyEntry(
   userId:     string,
   boardType:  BoardType,
+  mode:       RaceMode,
   weekStart?: string,
 ): Promise<DbResult<LeaderboardEntryRow>> {
   const raw  = await getRawClient();
@@ -83,6 +87,7 @@ export async function getUserWeeklyEntry(
     .from("leaderboard_entries")
     .select("*")
     .eq("user_id", userId)
+    .eq("mode", mode)
     .eq("board_type", boardType)
     .eq("week_start", week)
     .maybeSingle();
@@ -172,18 +177,34 @@ export async function submitRaceToLeaderboard(params: {
 
   if (isPrivate || flagged) return;
 
+  const raceMode = mode as RaceMode;
   const weekStart = getWeekStart();
+  const entries: LeaderboardEntryInsert[] = [];
 
-  const entries: LeaderboardEntryInsert[] = [
-    { user_id: userId, race_id: raceId, week_start: weekStart, mode, board_type: "TOP_SPEED", value: maxSpeed },
-    { user_id: userId, race_id: raceId, week_start: weekStart, mode, board_type: "DISTANCE",  value: distanceKm },
-  ];
-
-  if (durationMs !== null && durationMs > 0) {
-    entries.push({
-      user_id: userId, race_id: raceId, week_start: weekStart,
-      mode, board_type: "BEST_TIME", value: durationMs,
-    });
+  if (raceMode === "FREE_RUN") {
+    entries.push(
+      { user_id: userId, race_id: raceId, week_start: weekStart, mode: raceMode, board_type: "TOP_SPEED", value: maxSpeed },
+      { user_id: userId, race_id: raceId, week_start: weekStart, mode: raceMode, board_type: "DISTANCE", value: distanceKm },
+    );
+  } else if (raceMode === "TOP_SPEED") {
+    entries.push(
+      { user_id: userId, race_id: raceId, week_start: weekStart, mode: raceMode, board_type: "TOP_SPEED", value: maxSpeed },
+    );
+  } else if (
+    raceMode === "ZERO_TO_100" ||
+    raceMode === "ZERO_TO_200" ||
+    raceMode === "QUARTER_MILE"
+  ) {
+    if (durationMs !== null && durationMs > 0) {
+      entries.push({
+        user_id: userId,
+        race_id: raceId,
+        week_start: weekStart,
+        mode: raceMode,
+        board_type: "BEST_TIME",
+        value: durationMs,
+      });
+    }
   }
 
   await Promise.all(
