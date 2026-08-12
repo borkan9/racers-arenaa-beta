@@ -1,22 +1,22 @@
 // lib/auth/requireAuth.ts
 
 import { NextResponse } from "next/server";
-import { getSession }   from "@/lib/auth/getSession";
+import { getSession } from "@/lib/auth/getSession";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import type { User }    from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
 
 export interface AuthGuardSuccess {
-  ok:        true;
-  user:      User;
-  userId:    string;
+  ok: true;
+  user: User;
+  userId: string;
   response?: never;
 }
 
 export interface AuthGuardFailure {
-  ok:       false;
+  ok: false;
   response: NextResponse;
-  user?:    never;
-  userId?:  never;
+  user?: never;
+  userId?: never;
 }
 
 export type AuthGuardResult = AuthGuardSuccess | AuthGuardFailure;
@@ -26,7 +26,7 @@ export async function requireAuth(): Promise<AuthGuardResult> {
 
   if (error || !user) {
     return {
-      ok:       false,
+      ok: false,
       response: NextResponse.json(
         { error: "Unauthorized. Please sign in." },
         { status: 401 },
@@ -61,31 +61,22 @@ export async function requireAuth(): Promise<AuthGuardResult> {
     };
   }
 
-  return {
-    ok:     true,
-    user,
-    userId: user.id,
-  };
+  return { ok: true, user, userId: user.id };
 }
 
 export async function requireAdmin(): Promise<AuthGuardResult> {
   const authGuard = await requireAuth();
   if (!authGuard.ok) return authGuard;
 
-  const { createSupabaseServerClient } = await import("@/lib/supabase/server");
-  const supabase = await createSupabaseServerClient();
-
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabaseAdmin
     .from("users")
     .select("role")
     .eq("id", authGuard.userId)
     .single();
 
-  const role = (data as { role?: string } | null)?.role;
-
-  if (error || role !== "admin") {
+  if (error || data?.role !== "admin") {
     return {
-      ok:       false,
+      ok: false,
       response: NextResponse.json(
         { error: "Forbidden. Admin access required." },
         { status: 403 },
