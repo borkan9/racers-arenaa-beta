@@ -1,4 +1,4 @@
-// middleware.ts
+// proxy.ts
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient }        from "@supabase/ssr";
@@ -29,7 +29,7 @@ function isAdminRoute(pathname: string): boolean {
   return ADMIN_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   let response = NextResponse.next({
