@@ -2,18 +2,13 @@
 
 "use client";
 
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-} from "react";
-import { Speedometer }        from "@/components/Speedometer";
-import { LiveMap }            from "@/components/LiveMap";
-import { CountdownOverlay }   from "@/components/CountdownOverlay";
-import { useTelemetry }       from "@/hooks/useTelemetry";
-import { useRaceSubmit }      from "@/hooks/useRace";
-import { useSession }         from "@/hooks/useSession";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Speedometer } from "@/components/Speedometer";
+import { LiveMap } from "@/components/LiveMap";
+import { CountdownOverlay } from "@/components/CountdownOverlay";
+import { useTelemetry } from "@/hooks/useTelemetry";
+import { useRaceSubmit } from "@/hooks/useRace";
+import { useSession } from "@/hooks/useSession";
 import {
   C, FONT, RACE_MODES, COUNTDOWN_OPTIONS,
   SPEEDO_MAX_KMH, SPEEDO_MAX_MPH, TIMER_INTERVAL_MS, MAX_ROUTE_POINTS,
@@ -24,6 +19,20 @@ import type {
   CountdownSeconds, TelemetrySnapshot, RoutePoint, ScreenId,
 } from "@/types";
 
+const QUARTER_MILE_KM = 0.402336;
+
+const MODE_API_NAMES: Record<RaceModeId, string> = {
+  free: "FREE_RUN",
+  "0-100": "ZERO_TO_100",
+  "0-200": "ZERO_TO_200",
+  qmile: "QUARTER_MILE",
+  topspeed: "TOP_SPEED",
+};
+
+function isTimedMode(mode: RaceModeId): boolean {
+  return mode === "0-100" || mode === "0-200" || mode === "qmile";
+}
+
 interface RaceScreenProps {
   onExit: (dest: ScreenId) => void;
 }
@@ -32,31 +41,28 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
   const { isAuthenticated } = useSession();
   const { submitRace, submitStatus } = useRaceSubmit();
 
-  // Config
-  const [raceMode,  setRaceMode]  = useState<RaceModeId>("free");
-  const [unit,      setUnit]      = useState<SpeedUnit>("kmh");
+  const [raceMode, setRaceMode] = useState<RaceModeId>("free");
+  const [unit, setUnit] = useState<SpeedUnit>("kmh");
   const [countdown, setCountdown] = useState<CountdownSeconds>(3);
   const [isPrivate, setIsPrivate] = useState(false);
 
-  // Race lifecycle
-  const [phase,     setPhase]     = useState<RacePhase>("setup");
+  const [phase, setPhase] = useState<RacePhase>("setup");
   const [startTime, setStartTime] = useState<number | null>(null);
-  const [elapsed,   setElapsed]   = useState(0);
+  const [elapsed, setElapsed] = useState(0);
 
-  // Telemetry
   const [telemetry, setTelemetry] = useState<TelemetrySnapshot>({
     speed: 0, topSpeed: 0, distance: 0, elapsed: 0,
     accel: 0, gForce: 0, lat: null, lng: null,
   });
   const [route, setRoute] = useState<RoutePoint[]>([]);
 
-  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startLatRef = useRef<number | null>(null);
   const startLngRef = useRef<number | null>(null);
+  const completionTriggeredRef = useRef(false);
 
   const handleUpdate = useCallback((snapshot: TelemetrySnapshot) => {
     setTelemetry(snapshot);
-    // Save start position
     if (snapshot.lat !== null && snapshot.lng !== null && startLatRef.current === null) {
       startLatRef.current = snapshot.lat;
       startLngRef.current = snapshot.lng;
@@ -67,7 +73,6 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
     setRoute((prev) => {
       const next = [...prev, point];
       if (next.length <= MAX_ROUTE_POINTS) return next;
-
       return next.filter((_, index) => (
         index === 0 || index === next.length - 1 || index % 2 === 0
       ));
@@ -75,79 +80,93 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
   }, []);
 
   const { gpsReady, gpsError } = useTelemetry({
-    enabled:   phase !== "finished",
+    enabled: phase !== "finished",
     startTime,
-    simulate:  false,
+    simulate: false,
     callbacks: { onUpdate: handleUpdate, onRoutePoint: handleRoutePoint },
   });
 
-  // Timer
   useEffect(() => {
     if (phase === "racing" && startTime !== null) {
-      timerRef.current = setInterval(() => setElapsed(Date.now() - startTime), TIMER_INTERVAL_MS);
+      timerRef.current = setInterval(
+        () => setElapsed(Date.now() - startTime),
+        TIMER_INTERVAL_MS,
+      );
     } else {
-      if (timerRef.current !== null) { clearInterval(timerRef.current); timerRef.current = null; }
+      if (timerRef.current !== null) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
       if (phase !== "finished") setElapsed(0);
     }
-    return () => { if (timerRef.current !== null) clearInterval(timerRef.current); };
+    return () => {
+      if (timerRef.current !== null) clearInterval(timerRef.current);
+    };
   }, [phase, startTime]);
 
   const handleCountdownComplete = useCallback(() => {
+    completionTriggeredRef.current = false;
     setStartTime(Date.now());
     setPhase("racing");
   }, []);
 
-  const handleStopRace = useCallback(async () => {
+  const handleStopRace = useCallback(async (officialElapsedMs?: number) => {
+    const finalElapsed = typeof officialElapsedMs === "number"
+      ? officialElapsedMs
+      : elapsed;
+
+    setElapsed(finalElapsed);
     setPhase("finished");
 
     if (!isAuthenticated) return;
 
-    // Map raceMode to API format
-    const modeMap: Record<RaceModeId, string> = {
-      "free":     "FREE_RUN",
-      "0-100":    "ZERO_TO_100",
-      "0-200":    "ZERO_TO_200",
-      "qmile":    "QUARTER_MILE",
-      "topspeed": "TOP_SPEED",
-    };
-
-    // Convert speed if MPH
-    const maxSpeedKmh = unit === "mph"
-      ? telemetry.topSpeed / 0.621371
-      : telemetry.topSpeed;
-
-    const avgSpeedKmh = elapsed > 0
-      ? telemetry.distance / (elapsed / 3_600_000)
+    // Telemetry is always stored internally as KM/H regardless of display unit.
+    const maxSpeedKmh = telemetry.topSpeed;
+    const avgSpeedKmh = finalElapsed > 0
+      ? telemetry.distance / (finalElapsed / 3_600_000)
       : 0;
 
-    // Build GPS route points
     const gpsRoute = route
       .filter((p) => p.lat !== undefined && p.lng !== undefined)
       .map((p) => ({
-        lat:   p.lat!,
-        lng:   p.lng!,
+        lat: p.lat!,
+        lng: p.lng!,
         speed: p.speed ?? 0,
-        ts:    p.ts ?? 0,
+        ts: p.ts ?? 0,
       }));
 
     const lastPoint = gpsRoute[gpsRoute.length - 1];
 
     await submitRace({
-      mode:        modeMap[raceMode] as any,
-      unit:        "KMH",
-      duration_ms: elapsed,
-      max_speed:   Math.round(maxSpeedKmh * 10) / 10,
-      avg_speed:   Math.round(avgSpeedKmh * 10) / 10,
+      mode: MODE_API_NAMES[raceMode] as any,
+      unit: "KMH",
+      duration_ms: finalElapsed,
+      max_speed: Math.round(maxSpeedKmh * 10) / 10,
+      avg_speed: Math.round(avgSpeedKmh * 10) / 10,
       distance_km: telemetry.distance,
-      peak_accel:  telemetry.accel,
-      start_lat:   startLatRef.current,
-      start_lng:   startLngRef.current,
-      finish_lat:  lastPoint?.lat ?? null,
-      finish_lng:  lastPoint?.lng ?? null,
+      peak_accel: telemetry.accel,
+      start_lat: startLatRef.current,
+      start_lng: startLngRef.current,
+      finish_lat: lastPoint?.lat ?? null,
+      finish_lng: lastPoint?.lng ?? null,
       route_points: gpsRoute,
-      is_private:  isPrivate,
+      is_private: isPrivate,
     });
-  }, [phase, isAuthenticated, raceMode, unit, telemetry, route, elapsed, isPrivate, submitRace]);
+  }, [isAuthenticated, raceMode, telemetry, route, elapsed, isPrivate, submitRace]);
+
+  useEffect(() => {
+    if (phase !== "racing" || completionTriggeredRef.current) return;
+
+    const completed =
+      (raceMode === "0-100" && telemetry.speed >= 100) ||
+      (raceMode === "0-200" && telemetry.speed >= 200) ||
+      (raceMode === "qmile" && telemetry.distance >= QUARTER_MILE_KM);
+
+    if (!completed) return;
+
+    completionTriggeredRef.current = true;
+    void handleStopRace(telemetry.elapsed > 0 ? telemetry.elapsed : elapsed);
+  }, [phase, raceMode, telemetry.speed, telemetry.distance, telemetry.elapsed, elapsed, handleStopRace]);
 
   const handleReset = useCallback(() => {
     setPhase("setup");
@@ -156,14 +175,18 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
     setRoute([]);
     startLatRef.current = null;
     startLngRef.current = null;
-    setTelemetry({ speed: 0, topSpeed: 0, distance: 0, elapsed: 0, accel: 0, gForce: 0, lat: null, lng: null });
+    completionTriggeredRef.current = false;
+    setTelemetry({
+      speed: 0, topSpeed: 0, distance: 0, elapsed: 0,
+      accel: 0, gForce: 0, lat: null, lng: null,
+    });
   }, []);
 
-  const displaySpeed    = convertSpeed(telemetry.speed,    unit);
+  const displaySpeed = convertSpeed(telemetry.speed, unit);
   const displayTopSpeed = convertSpeed(telemetry.topSpeed, unit);
-  const maxSpeedo       = unit === "mph" ? SPEEDO_MAX_MPH : SPEEDO_MAX_KMH;
+  const maxSpeedo = unit === "mph" ? SPEEDO_MAX_MPH : SPEEDO_MAX_KMH;
+  const timedMode = isTimedMode(raceMode);
 
-  // ── SETUP ──
   if (phase === "setup") {
     return (
       <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", padding: 20 }}>
@@ -173,8 +196,6 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
         </div>
 
         <div style={{ maxWidth: 480, margin: "0 auto", width: "100%" }}>
-
-          {/* Race Mode */}
           <label style={{ display: "block", fontSize: 11, fontWeight: 700, letterSpacing: 3, color: C.muted, marginBottom: 12, fontFamily: FONT.body }}>RACE MODE</label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 24 }}>
             {RACE_MODES.map((m) => (
@@ -185,7 +206,14 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
             ))}
           </div>
 
-          {/* Unit */}
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 12px", marginBottom: 18, fontFamily: FONT.body, fontSize: 12, color: C.muted }}>
+            {raceMode === "0-100" && "Timer completes automatically at 100 km/h."}
+            {raceMode === "0-200" && "Timer completes automatically at 200 km/h."}
+            {raceMode === "qmile" && "Timer completes automatically at 402.336 meters."}
+            {raceMode === "topspeed" && "Record your highest validated GPS speed, then stop manually."}
+            {raceMode === "free" && "Open run: record speed, distance and route until you stop manually."}
+          </div>
+
           <label style={{ display: "block", fontSize: 11, fontWeight: 700, letterSpacing: 3, color: C.muted, marginBottom: 12, fontFamily: FONT.body }}>UNIT</label>
           <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
             {(["kmh", "mph"] as SpeedUnit[]).map((u) => (
@@ -196,7 +224,6 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
             ))}
           </div>
 
-          {/* Countdown */}
           <label style={{ display: "block", fontSize: 11, fontWeight: 700, letterSpacing: 3, color: C.muted, marginBottom: 12, fontFamily: FONT.body }}>COUNTDOWN</label>
           <div style={{ display: "flex", gap: 10, marginBottom: 24 }}>
             {COUNTDOWN_OPTIONS.map((c) => (
@@ -207,7 +234,6 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
             ))}
           </div>
 
-          {/* Private toggle */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 36 }}>
             <div>
               <div style={{ fontFamily: FONT.body, fontWeight: 700, fontSize: 14, color: C.text }}>Private Run</div>
@@ -237,19 +263,15 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
     );
   }
 
-  // ── COUNTDOWN ──
   if (phase === "countdown") {
     return <CountdownOverlay from={countdown} onComplete={handleCountdownComplete} />;
   }
 
-  // ── RACING / FINISHED ──
-  const isRacing   = phase === "racing";
+  const isRacing = phase === "racing";
   const isFinished = phase === "finished";
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-
-      {/* Status bar */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 20px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: isRacing ? C.accent : C.muted, animation: isRacing ? "blink 1s step-end infinite" : "none" }} />
@@ -268,19 +290,17 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
         )}
       </div>
 
-      {/* Telemetry */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "16px 20px", gap: 16, overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "center" }}>
           <Speedometer speed={displaySpeed} maxSpeed={maxSpeedo} unit={unit} style={{ maxWidth: 340 }} />
         </div>
 
-        {/* Stats */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, flexShrink: 0 }}>
           {[
             { label: "TOP SPEED", val: `${Math.round(displayTopSpeed)}`, sub: unit === "mph" ? "mph" : "km/h", gold: true, hot: false },
-            { label: "DISTANCE",  val: fmtDist(telemetry.distance, unit), sub: "", gold: false, hot: false },
-            { label: "ACCEL",     val: telemetry.accel.toFixed(2), sub: "m/s²", gold: false, hot: false },
-            { label: "G-FORCE",   val: telemetry.gForce.toFixed(2), sub: "G",   gold: false, hot: telemetry.gForce > 1 },
+            { label: "DISTANCE", val: fmtDist(telemetry.distance, unit), sub: "", gold: false, hot: false },
+            { label: "ACCEL", val: telemetry.accel.toFixed(2), sub: "m/s²", gold: false, hot: false },
+            { label: "G-FORCE", val: telemetry.gForce.toFixed(2), sub: "G", gold: false, hot: telemetry.gForce > 1 },
           ].map((s) => (
             <div key={s.label} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
               <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: C.muted, marginBottom: 6, fontFamily: FONT.body }}>{s.label}</div>
@@ -290,18 +310,16 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
           ))}
         </div>
 
-        {/* Map */}
         <div style={{ height: 200, borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}`, flexShrink: 0 }}>
           <LiveMap active={isRacing} routePoints={route} />
         </div>
       </div>
 
-      {/* Controls */}
       <div style={{ padding: "16px 20px", paddingBottom: 32, flexShrink: 0 }}>
         {isRacing ? (
-          <button onClick={handleStopRace}
+          <button onClick={timedMode ? handleReset : () => { void handleStopRace(); }}
             style={{ width: "100%", padding: "18px", background: "transparent", border: `2px solid ${C.accent}`, borderRadius: 14, color: C.accent, fontFamily: FONT.display, fontSize: 22, letterSpacing: 6, cursor: "pointer" }}>
-            ⬛ STOP RUN
+            {timedMode ? "✕ CANCEL RUN" : "⬛ STOP RUN"}
           </button>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
