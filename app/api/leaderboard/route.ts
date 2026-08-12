@@ -7,6 +7,7 @@ import {
   getWeekStart,
 } from "@/lib/db/leaderboard";
 import { getSession } from "@/lib/auth/getSession";
+import { isBoardTypeAllowed } from "@/lib/racing/leaderboardRules";
 import { z } from "zod";
 import type { BoardType, RaceMode } from "@/types/database.types";
 
@@ -16,12 +17,6 @@ const LeaderboardQuerySchema = z.object({
   week: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "week must be in YYYY-MM-DD format.").optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
-
-function isBoardTypeAllowed(mode: RaceMode, type: BoardType): boolean {
-  if (mode === "FREE_RUN") return type === "TOP_SPEED" || type === "DISTANCE";
-  if (mode === "TOP_SPEED") return type === "TOP_SPEED";
-  return type === "BEST_TIME";
-}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const { searchParams } = new URL(request.url);
