@@ -15,7 +15,10 @@ import {
   CreateRaceSchema,
   RaceListQuerySchema,
 }                                              from "@/lib/validators/race.schema";
-import { analyzeRace }                         from "@/lib/anticheat/analyze";
+import {
+  analyzeRace,
+  deriveRouteMetrics,
+}                                              from "@/lib/anticheat/analyze";
 import type { RaceInsert, RoutePoint }         from "@/types/database.types";
 
 // ─── POST /api/races ──────────────────────────────────────────────────────────
@@ -46,15 +49,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const input = result.data;
+  const routePoints = (input.route_points ?? []) as RoutePoint[];
+  const derivedMetrics = deriveRouteMetrics(
+    routePoints,
+    input.duration_ms ?? null,
+  );
+  const distanceKm = derivedMetrics.distanceKm ?? input.distance_km;
+  const avgSpeed   = derivedMetrics.avgSpeed   ?? input.avg_speed;
 
   // 4. Anti-cheat analysis
   const cheatResult = analyzeRace({
     maxSpeed:    input.max_speed,
-    avgSpeed:    input.avg_speed,
+    avgSpeed,
     peakAccel:   input.peak_accel ?? 0,
-    distanceKm:  input.distance_km,
+    distanceKm,
     durationMs:  input.duration_ms ?? null,
-    routePoints: (input.route_points ?? []) as RoutePoint[],
+    routePoints,
   });
 
   // 5. Build race insert payload
@@ -64,8 +74,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     unit:         input.unit,
     duration_ms:  input.duration_ms   ?? null,
     max_speed:    input.max_speed,
-    avg_speed:    input.avg_speed,
-    distance_km:  input.distance_km,
+    avg_speed:    avgSpeed,
+    distance_km:  distanceKm,
     peak_accel:   input.peak_accel    ?? 0,
     start_lat:    input.start_lat     ?? null,
     start_lng:    input.start_lng     ?? null,

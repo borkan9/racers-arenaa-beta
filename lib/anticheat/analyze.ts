@@ -58,6 +58,11 @@ export interface AnalyzeRaceResult {
   violations: Violation[];      // all detected violations
 }
 
+export interface DerivedRouteMetrics {
+  distanceKm: number | null;
+  avgSpeed:   number | null;
+}
+
 interface Violation {
   rule:       string;
   confidence: number;
@@ -65,6 +70,43 @@ interface Violation {
 }
 
 // ─── MAIN FUNCTION ────────────────────────────────────────────────────────────
+
+export function deriveRouteMetrics(
+  points:     RoutePoint[],
+  durationMs: number | null,
+): DerivedRouteMetrics {
+  if (points.length < 2) {
+    return { distanceKm: null, avgSpeed: null };
+  }
+
+  let distanceKm = 0;
+
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+
+    if (
+      !Number.isFinite(prev.ts) ||
+      !Number.isFinite(curr.ts) ||
+      curr.ts <= prev.ts
+    ) {
+      return { distanceKm: null, avgSpeed: null };
+    }
+
+    const segmentDistance = haversineKm(prev.lat, prev.lng, curr.lat, curr.lng);
+    if (!Number.isFinite(segmentDistance)) {
+      return { distanceKm: null, avgSpeed: null };
+    }
+
+    distanceKm += segmentDistance;
+  }
+
+  const avgSpeed = durationMs !== null && durationMs > 0
+    ? distanceKm / (durationMs / 3_600_000)
+    : null;
+
+  return { distanceKm, avgSpeed };
+}
 
 /**
  * Analyses a race submission for physically impossible values.
