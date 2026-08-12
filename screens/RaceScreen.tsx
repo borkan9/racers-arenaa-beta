@@ -16,7 +16,7 @@ import { useRaceSubmit }      from "@/hooks/useRace";
 import { useSession }         from "@/hooks/useSession";
 import {
   C, FONT, RACE_MODES, COUNTDOWN_OPTIONS,
-  SPEEDO_MAX_KMH, SPEEDO_MAX_MPH, TIMER_INTERVAL_MS,
+  SPEEDO_MAX_KMH, SPEEDO_MAX_MPH, TIMER_INTERVAL_MS, MAX_ROUTE_POINTS,
 } from "@/lib/constants";
 import { fmtTime, fmtDist, convertSpeed } from "@/lib/utils";
 import type {
@@ -64,7 +64,14 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
   }, []);
 
   const handleRoutePoint = useCallback((point: RoutePoint) => {
-    setRoute((prev) => prev.length >= 500 ? [...prev.slice(-499), point] : [...prev, point]);
+    setRoute((prev) => {
+      const next = [...prev, point];
+      if (next.length <= MAX_ROUTE_POINTS) return next;
+
+      return next.filter((_, index) => (
+        index === 0 || index === next.length - 1 || index % 2 === 0
+      ));
+    });
   }, []);
 
   useTelemetry({
@@ -116,7 +123,6 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
     // Build GPS route points
     const gpsRoute = route
       .filter((p) => p.lat !== undefined && p.lng !== undefined)
-      .slice(0, 200)
       .map((p) => ({
         lat:   p.lat!,
         lng:   p.lng!,
