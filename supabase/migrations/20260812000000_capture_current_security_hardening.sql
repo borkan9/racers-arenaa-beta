@@ -25,6 +25,8 @@ using ((select auth.uid()) = id)
 with check ((select auth.uid()) = id);
 
 revoke insert, update, delete on table public.users from anon, authenticated;
+grant insert (id, username, avatar, bio) on public.users to authenticated;
+grant update (username, avatar, bio) on public.users to authenticated;
 grant select on table public.users to anon, authenticated;
 revoke insert, delete on table public.users from service_role;
 grant select, update on table public.users to service_role;
