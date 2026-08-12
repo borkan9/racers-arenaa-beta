@@ -5,7 +5,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth/requireAuth";
-import { createRace, getRacesByUserId } from "@/lib/db/races";
+import {
+  createRace,
+  getLatestRaceCreatedAtByUser,
+  getRacesByUserId,
+} from "@/lib/db/races";
 import { submitRaceToLeaderboard } from "@/lib/db/leaderboard";
 import {
   validate,
@@ -20,9 +24,35 @@ import {
 } from "@/lib/racing/rules";
 import type { RaceInsert, RaceMode, RoutePoint } from "@/types/database.types";
 
+const MIN_RACE_SUBMISSION_INTERVAL_MS = 5_000;
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const guard = await requireAuth();
   if (!guard.ok) return guard.response;
+
+  const { data: latestCreatedAt, error: rateLookupError } =
+    await getLatestRaceCreatedAtByUser(guard.userId);
+
+  if (rateLookupError) {
+    return NextResponse.json({ error: "Unable to verify submission rate." }, { status: 503 });
+  }
+
+  if (latestCreatedAt) {
+    const sinceLastSubmission = Date.now() - new Date(latestCreatedAt).getTime();
+    if (Number.isFinite(sinceLastSubmission) && sinceLastSubmission < MIN_RACE_SUBMISSION_INTERVAL_MS) {
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((MIN_RACE_SUBMISSION_INTERVAL_MS - sinceLastSubmission) / 1_000),
+      );
+      return NextResponse.json(
+        { error: "Race submissions are temporarily rate limited. Please retry shortly." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(retryAfterSeconds) },
+        },
+      );
+    }
+  }
 
   let body: unknown;
   try {
@@ -50,8 +80,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     forcedFlagReason = routeMetrics.reason ?? "COMPETITIVE_TARGET_NOT_COMPLETED";
   }
 
-  // Competitive results must come from the recorded route. Free Run may retain
-  // the client summary when route telemetry is unavailable.
   const durationMs = routeMetrics.routeValid && routeMetrics.durationMs !== null
     ? routeMetrics.durationMs
     : (competitive ? null : input.duration_ms ?? null);
