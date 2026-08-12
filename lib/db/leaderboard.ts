@@ -1,7 +1,6 @@
 // lib/db/leaderboard.ts
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
   LeaderboardEntryRow,
   LeaderboardEntryInsert,
@@ -30,8 +29,8 @@ type RawClient = {
   from: (table: string) => any;
 };
 
-async function getRawClient(): Promise<RawClient> {
-  return createSupabaseServerClient() as unknown as RawClient;
+function getRawClient(): RawClient {
+  return supabaseAdmin as unknown as RawClient;
 }
 
 export function getWeekStart(date: Date = new Date()): string {
@@ -49,7 +48,7 @@ export async function getWeeklyLeaderboard(
   weekStart?: string,
   limit:      number = 50,
 ): Promise<DbResult<RankedEntry[]>> {
-  const raw       = await getRawClient();
+  const raw       = getRawClient();
   const week      = weekStart ?? getWeekStart();
   const ascending = boardType === "BEST_TIME";
 
@@ -80,7 +79,7 @@ export async function getUserWeeklyEntry(
   mode:       RaceMode,
   weekStart?: string,
 ): Promise<DbResult<LeaderboardEntryRow>> {
-  const raw  = await getRawClient();
+  const raw  = getRawClient();
   const week = weekStart ?? getWeekStart();
 
   const { data, error } = await raw
@@ -103,7 +102,7 @@ export async function getUserWeeklyEntry(
 export async function upsertLeaderboardEntry(
   payload: LeaderboardEntryInsert,
 ): Promise<DbResult<LeaderboardEntryRow>> {
-  const raw       = supabaseAdmin as unknown as RawClient;
+  const raw       = getRawClient();
   const ascending = payload.board_type === "BEST_TIME";
 
   const { data: existing, error: fetchError } = await raw
@@ -122,7 +121,6 @@ export async function upsertLeaderboardEntry(
 
   if (existing) {
     const row = existing as { id: string; value: number };
-
     const existingIsBetter = ascending
       ? row.value <= payload.value
       : row.value >= payload.value;
