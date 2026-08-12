@@ -1,10 +1,11 @@
 // app/api/races/[id]/route.ts
 
-import { NextRequest, NextResponse }  from "next/server";
-import { getSession }                  from "@/lib/auth/getSession";
-import { requireAdmin }                from "@/lib/auth/requireAuth";
-import { getRaceById, updateRace }     from "@/lib/db/races";
-import { z }                           from "zod";
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth/getSession";
+import { requireAdmin } from "@/lib/auth/requireAuth";
+import { getRaceById, updateRace } from "@/lib/db/races";
+import { getUserById } from "@/lib/db/users";
+import { z } from "zod";
 
 const UuidSchema = z.string().uuid("Invalid race ID format.");
 
@@ -13,67 +14,45 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   const { id } = await params;
-
   const parsed = UuidSchema.safeParse(id);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid race ID." }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "Invalid race ID." }, { status: 400 });
+
+  const { data: race, error } = await getRaceById(parsed.data);
+  if (error) return NextResponse.json({ error: "Failed to fetch race." }, { status: 500 });
+  if (!race) return NextResponse.json({ error: "Race not found." }, { status: 404 });
+
+  const { user } = await getSession();
+  const isOwner = user?.id === race.user_id;
+  let isAdmin = false;
+
+  if (user && !isOwner) {
+    const { data: profile } = await getUserById(user.id);
+    isAdmin = profile?.role === "admin";
   }
 
-  const raceId = parsed.data;
-
-  const { data: race, error } = await getRaceById(raceId);
-
-  if (error) {
-    return NextResponse.json({ error: "Failed to fetch race." }, { status: 500 });
+  // Raw race reads use service-role access now, so all public visibility rules
+  // must be enforced here before returning anything to the caller.
+  if (!isOwner && !isAdmin) {
+    if (race.status !== "FINISHED" || race.flagged || race.is_private) {
+      return NextResponse.json({ error: "Race not found." }, { status: 404 });
+    }
   }
 
-  if (!race) {
+  if (isOwner && race.status === "REMOVED") {
     return NextResponse.json({ error: "Race not found." }, { status: 404 });
   }
 
-  if (race.status === "REMOVED") {
-    const { user } = await getSession();
-    if (!user) {
-      return NextResponse.json({ error: "Race not found." }, { status: 404 });
-    }
-
-    const { createSupabaseServerClient } = await import("@/lib/supabase/server");
-    const supabase  = await createSupabaseServerClient();
-    const rawClient = supabase as unknown as { from: (t: string) => any };
-    const { data }  = await rawClient
-      .from("users")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    const role = (data as { role?: string } | null)?.role;
-    if (role !== "admin") {
-      return NextResponse.json({ error: "Race not found." }, { status: 404 });
-    }
-  }
-
-  if (race.is_private) {
-    const { user } = await getSession();
-    if (!user || user.id !== race.user_id) {
-      return NextResponse.json(
-        { error: "This run is private." },
-        { status: 403 },
-      );
-    }
-  }
-
-  const { user } = await getSession();
-  const isOwner  = user?.id === race.user_id;
-
-  const sanitised = isOwner
+  const sanitised = isOwner || isAdmin
     ? race
     : {
         ...race,
-        start_lat:    race.start_lat    !== null ? Number(race.start_lat.toFixed(2))   : null,
-        start_lng:    race.start_lng    !== null ? Number(race.start_lng.toFixed(2))   : null,
-        finish_lat:   race.finish_lat   !== null ? Number(race.finish_lat.toFixed(2))  : null,
-        finish_lng:   race.finish_lng   !== null ? Number(race.finish_lng.toFixed(2))  : null,
+        start_lat: race.start_lat !== null ? Number(race.start_lat.toFixed(2)) : null,
+        start_lng: race.start_lng !== null ? Number(race.start_lng.toFixed(2)) : null,
+        finish_lat: race.finish_lat !== null ? Number(race.finish_lat.toFixed(2)) : null,
+        finish_lng: race.finish_lng !== null ? Number(race.finish_lng.toFixed(2)) : null,
         route_points: null,
+        flag_reason: null,
+        reviewed: false,
       };
 
   return NextResponse.json(
@@ -93,27 +72,17 @@ export async function DELETE(
   if (!guard.ok) return guard.response;
 
   const { id } = await params;
-
   const parsed = UuidSchema.safeParse(id);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid race ID." }, { status: 400 });
-  }
+  if (!parsed.success) return NextResponse.json({ error: "Invalid race ID." }, { status: 400 });
 
   const raceId = parsed.data;
-
   const { data: existing, error: fetchError } = await getRaceById(raceId);
-
-  if (fetchError) {
-    return NextResponse.json({ error: "Failed to fetch race." }, { status: 500 });
-  }
-
-  if (!existing) {
-    return NextResponse.json({ error: "Race not found." }, { status: 404 });
-  }
+  if (fetchError) return NextResponse.json({ error: "Failed to fetch race." }, { status: 500 });
+  if (!existing) return NextResponse.json({ error: "Race not found." }, { status: 404 });
 
   const { data: removed, error: removeError } = await updateRace(raceId, {
-    status:      "REMOVED",
-    reviewed:    true,
+    status: "REMOVED",
+    reviewed: true,
     flag_reason: `Deleted by admin ${guard.userId}`,
   });
 
@@ -122,7 +91,6 @@ export async function DELETE(
   }
 
   console.log(`[api/races/${raceId}] Soft-deleted by admin ${guard.userId}.`);
-
   return NextResponse.json(
     { message: `Race ${raceId} has been removed.`, race: removed },
     { status: 200 },
