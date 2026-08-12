@@ -109,9 +109,9 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
       ? telemetry.topSpeed / 0.621371
       : telemetry.topSpeed;
 
-    const avgSpeedKmh = unit === "mph"
-      ? (telemetry.topSpeed * 0.7) / 0.621371
-      : telemetry.topSpeed * 0.7;
+    const avgSpeedKmh = elapsed > 0
+      ? telemetry.distance / (elapsed / 3_600_000)
+      : 0;
 
     // Build GPS route points
     const gpsRoute = route
