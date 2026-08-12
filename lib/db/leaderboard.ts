@@ -105,6 +105,7 @@ export async function upsertLeaderboardEntry(
     .from("leaderboard_entries")
     .select("id, value")
     .eq("user_id",    payload.user_id)
+    .eq("mode",       payload.mode)
     .eq("board_type", payload.board_type)
     .eq("week_start", payload.week_start)
     .maybeSingle();
