@@ -1,19 +1,18 @@
 // app/api/profile/route.ts
 
-import { NextRequest, NextResponse }     from "next/server";
-import { requireAuth }                    from "@/lib/auth/requireAuth";
-import { isUsernameAvailable }            from "@/lib/db/users";
-import { validate, UpdateProfileSchema }  from "@/lib/validators/user.schema";
-import { createSupabaseServerClient }     from "@/lib/supabase/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth/requireAuth";
+import { isUsernameAvailable } from "@/lib/db/users";
+import { validate, UpdateProfileSchema } from "@/lib/validators/user.schema";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+
+const raw = supabaseAdmin as unknown as { from: (table: string) => any };
 
 export async function GET(): Promise<NextResponse> {
   const guard = await requireAuth();
   if (!guard.ok) return guard.response;
 
   try {
-    const supabase = await createSupabaseServerClient();
-    const raw      = supabase as unknown as { from: (t: string) => any };
-
     const { data, error } = await raw
       .from("users")
       .select("*")
@@ -63,17 +62,14 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
 
   const payload: Record<string, unknown> = {};
   if (username !== undefined) payload.username = username;
-  if (bio       !== undefined) payload.bio      = bio;
-  if (avatar    !== undefined) payload.avatar   = avatar;
+  if (bio !== undefined) payload.bio = bio;
+  if (avatar !== undefined) payload.avatar = avatar;
 
   if (Object.keys(payload).length === 0) {
     return NextResponse.json({ error: "No fields provided to update." }, { status: 400 });
   }
 
   try {
-    const supabase = await createSupabaseServerClient();
-    const raw      = supabase as unknown as { from: (t: string) => any };
-
     const { data, error } = await raw
       .from("users")
       .update(payload)
@@ -82,6 +78,10 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
       .single();
 
     if (error) {
+      const message = String(error.message ?? "");
+      if (message.toLowerCase().includes("users_username_lower_unique_idx") || message.toLowerCase().includes("duplicate key")) {
+        return NextResponse.json({ error: "username: This username is already taken." }, { status: 409 });
+      }
       console.error("[api/profile] PATCH error:", error.message);
       return NextResponse.json({ error: "Failed to update profile." }, { status: 500 });
     }
