@@ -46,16 +46,18 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  const { data: { session } } = await supabase.auth.getSession();
+  // getUser verifies the session with Supabase Auth instead of trusting local
+  // cookie session contents. It also exercises token refresh when required.
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (isProtectedPage(pathname) && !session) {
+  if (isProtectedPage(pathname) && !user) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/auth/signin";
     redirectUrl.searchParams.set("redirectTo", pathname);
     return NextResponse.redirect(redirectUrl);
   }
 
-  if (pathname.startsWith("/auth/signin") && session) {
+  if (pathname.startsWith("/auth/signin") && user) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/";
     return NextResponse.redirect(redirectUrl);
