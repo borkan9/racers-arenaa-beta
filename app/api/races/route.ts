@@ -22,6 +22,7 @@ import {
   isCompetitiveRaceMode,
   isTimedRaceMode,
 } from "@/lib/racing/rules";
+import { consumeRateLimit } from "@/lib/security/rateLimit";
 import type { RaceInsert, RaceMode, RoutePoint } from "@/types/database.types";
 
 const MIN_RACE_SUBMISSION_INTERVAL_MS = 5_000;
@@ -29,6 +30,14 @@ const MIN_RACE_SUBMISSION_INTERVAL_MS = 5_000;
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const guard = await requireAuth();
   if (!guard.ok) return guard.response;
+
+  const allowed = await consumeRateLimit(`race:${guard.userId}`, 60, 12);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many race submissions. Please wait before trying again." },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
+  }
 
   const { data: latestCreatedAt, error: rateLookupError } =
     await getLatestRaceCreatedAtByUser(guard.userId);
