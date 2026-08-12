@@ -2,6 +2,7 @@
 
 import { NextResponse } from "next/server";
 import { getSession }   from "@/lib/auth/getSession";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { User }    from "@supabase/supabase-js";
 
 export interface AuthGuardSuccess {
@@ -29,6 +30,33 @@ export async function requireAuth(): Promise<AuthGuardResult> {
       response: NextResponse.json(
         { error: "Unauthorized. Please sign in." },
         { status: 401 },
+      ),
+    };
+  }
+
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    console.error("[auth/requireAuth] Failed to verify account status:", profileError.message);
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Unable to verify account status." },
+        { status: 500 },
+      ),
+    };
+  }
+
+  if (profile?.role === "suspended") {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "Account suspended." },
+        { status: 403 },
       ),
     };
   }

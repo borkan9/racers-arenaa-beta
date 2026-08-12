@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { calcDistance, clamp } from "@/lib/utils";
 import { ANTICHEAT, MAX_ROUTE_POINTS, TELEMETRY_INTERVAL_MS } from "@/lib/constants";
 import type { TelemetrySnapshot, RoutePoint } from "@/types";
@@ -24,7 +24,7 @@ export interface TelemetryCallbacks {
 }
 
 export interface UseTelemetryOptions {
-  /** Pass `true` only while a race is actively running. */
+  /** Pass `true` while acquiring a GPS lock or recording a race. */
   enabled:    boolean;
   /** Unix-ms timestamp recorded when the race phase started. */
   startTime:  number | null;
@@ -36,6 +36,11 @@ export interface UseTelemetryOptions {
   simulate?:  boolean;
 }
 
+export interface UseTelemetryResult {
+  gpsReady: boolean;
+  gpsError: string | null;
+}
+
 // ─── INTERNAL STATE SHAPE ────────────────────────────────────────────────────
 
 interface InternalState {
@@ -45,6 +50,11 @@ interface InternalState {
   prevTimestamp: number;        // ms
   totalDistance: number;        // km
   topSpeed:      number;        // km/h
+  lockLat:       number | null;
+  lockLng:       number | null;
+  lockAccuracy:  number | null;
+  lockTimestamp: number;
+  stableFixes:   number;
   // Simulation only
   simSpeed:      number;
   simDir:        1 | -1;
@@ -58,6 +68,9 @@ const SIM_START_X = 40;
 const SIM_START_Y = 260;
 const SIM_END_X   = 380;
 const SIM_END_Y   =  60;
+const GPS_MAX_ACCURACY_METERS = 25;
+const GPS_REQUIRED_STABLE_FIXES = 2;
+const GPS_MAX_SAMPLE_AGE_MS = 5_000;
 
 // ─── HOOK ─────────────────────────────────────────────────────────────────────
 
@@ -66,7 +79,10 @@ export function useTelemetry({
   startTime,
   callbacks,
   simulate = false,
-}: UseTelemetryOptions): void {
+}: UseTelemetryOptions): UseTelemetryResult {
+  const [gpsReady, setGpsReady] = useState(simulate);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+
   // All mutable internals live in a single ref — zero re-renders from the hook
   const state = useRef<InternalState>({
     prevLat:       null,
@@ -75,6 +91,11 @@ export function useTelemetry({
     prevTimestamp: Date.now(),
     totalDistance: 0,
     topSpeed:      0,
+    lockLat:       null,
+    lockLng:       null,
+    lockAccuracy:  null,
+    lockTimestamp: 0,
+    stableFixes:   0,
     simSpeed:      0,
     simDir:        1,
     simRouteX:     SIM_START_X,
@@ -87,6 +108,7 @@ export function useTelemetry({
 
   // GPS watch handle
   const watchIdRef = useRef<number | null>(null);
+  const initializedStartTimeRef = useRef<number | null>(null);
 
   // ── DeviceMotion data (kept in a ref, consumed on each tick) ──────────────
   const motionRef = useRef<{ accel: number; gForce: number }>({
@@ -120,39 +142,81 @@ export function useTelemetry({
   // ── GPS position handler ───────────────────────────────────────────────────
   const handlePosition = useCallback(
     (pos: GeolocationPosition) => {
-      if (!startTime) return;
+      const s          = state.current;
+      const lat        = pos.coords.latitude;
+      const lng        = pos.coords.longitude;
+      const accuracy   = pos.coords.accuracy;
+      const sampleTime = pos.timestamp;
 
-      const now     = Date.now();
-      const elapsed = now - startTime;
-      const s       = state.current;
+      if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng) ||
+        !Number.isFinite(accuracy) ||
+        accuracy > GPS_MAX_ACCURACY_METERS ||
+        !Number.isFinite(sampleTime) ||
+        Math.abs(Date.now() - sampleTime) > GPS_MAX_SAMPLE_AGE_MS
+      ) {
+        if (startTime === null) {
+          s.stableFixes = 0;
+          setGpsReady(false);
+        }
+        return;
+      }
 
-      const lat      = pos.coords.latitude;
-      const lng      = pos.coords.longitude;
-      const accuracy = pos.coords.accuracy ?? null;
+      if (startTime === null) {
+        const stableDistanceMeters =
+          s.lockLat !== null && s.lockLng !== null
+            ? calcDistance(s.lockLat, s.lockLng, lat, lng) * 1_000
+            : 0;
+
+        s.stableFixes =
+          s.lockLat === null || stableDistanceMeters <= GPS_MAX_ACCURACY_METERS
+            ? s.stableFixes + 1
+            : 1;
+        s.lockLat       = lat;
+        s.lockLng       = lng;
+        s.lockAccuracy  = accuracy;
+        s.lockTimestamp = sampleTime;
+
+        if (s.stableFixes >= GPS_REQUIRED_STABLE_FIXES) {
+          setGpsReady(true);
+          setGpsError(null);
+        }
+        return;
+      }
+
+      if (!gpsReady || sampleTime <= s.prevTimestamp || sampleTime < startTime) {
+        return;
+      }
+
+      const elapsed = sampleTime - startTime;
+      const dtSec   = (sampleTime - s.prevTimestamp) / 1_000;
+      if (dtSec <= 0) return;
+
+      let distDelta = 0;
+      if (s.prevLat !== null && s.prevLng !== null) {
+        distDelta = calcDistance(s.prevLat, s.prevLng, lat, lng);
+        const accuracyBufferKm = ((s.lockAccuracy ?? accuracy) + accuracy) / 1_000;
+        const maxTravelKm = (ANTICHEAT.MAX_SPEED_KMH / 3_600) * dtSec;
+        if (distDelta > maxTravelKm + accuracyBufferKm) return;
+      }
 
       // Prefer browser-reported speed; fall back to position-delta derivation
       let speed = (pos.coords.speed ?? 0) * 3.6; // m/s → km/h
 
       if (speed === 0 && s.prevLat !== null && s.prevLng !== null) {
-        const dtSec = (now - s.prevTimestamp) / 1_000;
-        if (dtSec > 0) {
-          const distKm = calcDistance(s.prevLat, s.prevLng, lat, lng);
-          speed        = (distKm / dtSec) * 3_600;
-        }
+        speed = (distDelta / dtSec) * 3_600;
       }
 
       // Sanity-cap against anti-cheat threshold
-      speed = clamp(speed, 0, ANTICHEAT.MAX_SPEED_KMH);
+      if (!Number.isFinite(speed) || speed < 0 || speed >= ANTICHEAT.MAX_SPEED_KMH) {
+        return;
+      }
 
       // Distance delta
-      let distDelta = 0;
-      if (s.prevLat !== null && s.prevLng !== null) {
-        distDelta = calcDistance(s.prevLat, s.prevLng, lat, lng);
-      }
       s.totalDistance += distDelta;
 
       // Acceleration from speed delta (used when DeviceMotion is unavailable)
-      const dtSec      = (now - s.prevTimestamp) / 1_000;
       const accelFallback =
         dtSec > 0
           ? clamp(
@@ -166,7 +230,8 @@ export function useTelemetry({
       s.prevLat       = lat;
       s.prevLng       = lng;
       s.prevSpeed     = speed;
-      s.prevTimestamp = now;
+      s.prevTimestamp = sampleTime;
+      s.lockAccuracy  = accuracy;
 
       const snapshot: TelemetrySnapshot = {
         speed,
@@ -185,12 +250,17 @@ export function useTelemetry({
       const routePoint = gpsToSvgPoint(lat, lng, speed, elapsed);
       cbRef.current.onRoutePoint(routePoint);
     },
-    [startTime],
+    [gpsReady, startTime],
   );
 
   const handleGpsError = useCallback((err: GeolocationPositionError) => {
     console.warn("[useTelemetry] GPS error:", err.message);
-  }, []);
+    if (startTime === null) {
+      state.current.stableFixes = 0;
+      setGpsReady(false);
+    }
+    setGpsError(err.message);
+  }, [startTime]);
 
   // ── Simulation tick ────────────────────────────────────────────────────────
   const simIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -308,7 +378,7 @@ export function useTelemetry({
 
   // Re-acquire wake lock when tab becomes visible again
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || startTime === null) return;
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
@@ -317,11 +387,44 @@ export function useTelemetry({
     };
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [enabled, acquireWakeLock]);
+  }, [enabled, startTime, acquireWakeLock]);
+
+  useEffect(() => {
+    if (
+      startTime === null ||
+      !gpsReady ||
+      initializedStartTimeRef.current === startTime
+    ) {
+      return;
+    }
+
+    const s = state.current;
+    if (s.lockLat === null || s.lockLng === null) return;
+
+    initializedStartTimeRef.current = startTime;
+    s.prevLat        = s.lockLat;
+    s.prevLng        = s.lockLng;
+    s.prevSpeed      = 0;
+    s.prevTimestamp  = startTime;
+    s.totalDistance  = 0;
+    s.topSpeed       = 0;
+
+    cbRef.current.onUpdate({
+      speed: 0,
+      topSpeed: 0,
+      distance: 0,
+      elapsed: 0,
+      accel: 0,
+      gForce: motionRef.current.gForce,
+      lat: s.lockLat,
+      lng: s.lockLng,
+    });
+    cbRef.current.onRoutePoint(gpsToSvgPoint(s.lockLat, s.lockLng, 0, 0));
+  }, [gpsReady, startTime]);
 
   // ── Main effect: start / stop everything ─────────────────────────────────
   useEffect(() => {
-    if (!enabled || startTime === null) {
+    if (!enabled) {
       // Tear down
       stopSimulation();
 
@@ -345,15 +448,25 @@ export function useTelemetry({
       s.simDir         = 1;
       s.simRouteX      = SIM_START_X;
       s.simRouteY      = SIM_START_Y;
+      s.lockLat        = null;
+      s.lockLng        = null;
+      s.lockAccuracy   = null;
+      s.lockTimestamp  = 0;
+      s.stableFixes    = 0;
+      initializedStartTimeRef.current = null;
+      setGpsReady(simulate);
+      setGpsError(null);
 
       return;
     }
 
-    // Start
-    acquireWakeLock();
-
     if (simulate) {
-      startSimulation();
+      setGpsReady(true);
+      setGpsError(null);
+      if (startTime !== null) {
+        acquireWakeLock();
+        startSimulation();
+      }
     } else {
       // Real GPS
       if (navigator.geolocation) {
@@ -367,13 +480,15 @@ export function useTelemetry({
           },
         );
       } else {
-        // GPS unavailable — fall back to simulation automatically
-        console.warn("[useTelemetry] Geolocation unavailable, falling back to simulation.");
-        startSimulation();
+        // Never fabricate race telemetry when the device cannot provide GPS.
+        setGpsReady(false);
+        setGpsError("GPS is not available on this device.");
       }
 
-      // Always try DeviceMotion (for accel/G-force) even in real GPS mode
-      startDeviceMotion();
+      if (startTime !== null) {
+        acquireWakeLock();
+        startDeviceMotion();
+      }
     }
 
     return () => {
@@ -400,6 +515,8 @@ export function useTelemetry({
     acquireWakeLock,
     releaseWakeLock,
   ]);
+
+  return { gpsReady, gpsError };
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────

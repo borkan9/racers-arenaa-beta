@@ -57,7 +57,7 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
   const handleUpdate = useCallback((snapshot: TelemetrySnapshot) => {
     setTelemetry(snapshot);
     // Save start position
-    if (snapshot.lat && !startLatRef.current) {
+    if (snapshot.lat !== null && snapshot.lng !== null && startLatRef.current === null) {
       startLatRef.current = snapshot.lat;
       startLngRef.current = snapshot.lng;
     }
@@ -74,8 +74,8 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
     });
   }, []);
 
-  useTelemetry({
-    enabled:   phase === "racing",
+  const { gpsReady, gpsError } = useTelemetry({
+    enabled:   phase !== "finished",
     startTime,
     simulate:  false,
     callbacks: { onUpdate: handleUpdate, onRoutePoint: handleRoutePoint },
@@ -225,12 +225,12 @@ export function RaceScreen({ onExit }: RaceScreenProps) {
             </div>
           )}
 
-          <button onClick={() => setPhase("countdown")}
-            style={{ width: "100%", padding: "20px", background: C.accent, border: "none", borderRadius: 14, color: C.white, fontFamily: FONT.display, fontSize: 24, letterSpacing: 6, cursor: "pointer", animation: "glow-pulse 2s ease-in-out infinite", marginBottom: 12 }}>
-            ▶ START RUN
+          <button disabled={!gpsReady} onClick={() => { if (gpsReady) setPhase("countdown"); }}
+            style={{ width: "100%", padding: "20px", background: gpsReady ? C.accent : C.dim, border: "none", borderRadius: 14, color: C.white, fontFamily: FONT.display, fontSize: 24, letterSpacing: 6, cursor: gpsReady ? "pointer" : "wait", animation: gpsReady ? "glow-pulse 2s ease-in-out infinite" : "none", marginBottom: 12 }}>
+            {gpsReady ? "▶ START RUN" : "⌖ ACQUIRING GPS"}
           </button>
-          <div style={{ textAlign: "center", fontSize: 11, color: C.muted, fontFamily: FONT.body, letterSpacing: 2 }}>
-            GPS + ACCELEROMETER + GYROSCOPE ACTIVE
+          <div style={{ textAlign: "center", fontSize: 11, color: gpsError ? C.yellow : C.muted, fontFamily: FONT.body, letterSpacing: 2 }}>
+            {gpsError ?? (gpsReady ? "GPS LOCKED — READY TO RACE" : "WAITING FOR AN ACCURATE GPS FIX")}
           </div>
         </div>
       </div>

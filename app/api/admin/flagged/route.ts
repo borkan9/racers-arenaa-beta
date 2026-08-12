@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse }                from "next/server";
 import { requireAdmin }                              from "@/lib/auth/requireAuth";
 import { getFlaggedRaces, approveRace, removeRace } from "@/lib/db/races";
+import { submitRaceToLeaderboard }                   from "@/lib/db/leaderboard";
 import { validate, AdminRaceActionSchema }           from "@/lib/validators/race.schema";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -68,6 +69,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { status: 500 },
       );
     }
+
+    await submitRaceToLeaderboard({
+      userId: race.user_id,
+      raceId: race.id,
+      mode: race.mode,
+      maxSpeed: race.max_speed,
+      durationMs: race.duration_ms,
+      distanceKm: race.distance_km,
+      isPrivate: race.is_private,
+      flagged: false,
+    });
 
     console.log(
       `[admin/flagged] Race ${race_id} approved by admin ${guard.userId}. Note: ${note}`,
