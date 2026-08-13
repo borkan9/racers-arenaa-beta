@@ -85,12 +85,13 @@ export const SPEEDO_END_ANGLE   =   40;
 
 // ─── NAV ITEMS ────────────────────────────────────────────────────────────────
 export const NAV_ITEMS = [
-  { id: "home",    icon: "⚡", label: "HOME"    },
-  { id: "race",    icon: "🏁", label: "RACE",    action: true },
-  { id: "board",   icon: "🏆", label: "RANKS"   },
-  { id: "history", icon: "📊", label: "HISTORY" },
-  { id: "explore", icon: "🌍", label: "EXPLORE" },
-  { id: "profile", icon: "👤", label: "PROFILE" },
+  { id: "home",     icon: "⚡", label: "HOME"      },
+  { id: "race",     icon: "🏁", label: "RACE",      action: true },
+  { id: "board",    icon: "🏆", label: "RANKS"     },
+  { id: "history",  icon: "📊", label: "HISTORY"   },
+  { id: "explore",  icon: "🌍", label: "EXPLORE"   },
+  { id: "profile",  icon: "👤", label: "PROFILE"   },
+  { id: "liveData", icon: "🧭", label: "LIVE DATA", desktopOnly: true },
 ] as const;
 
 // ─── BADGE CONFIG ─────────────────────────────────────────────────────────────
