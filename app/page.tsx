@@ -31,6 +31,10 @@ const ProfileScreen = dynamic(
   () => import("@/screens/ProfileScreen").then((mod) => mod.ProfileScreen),
   { loading: () => <ScreenLoader label="LOADING PROFILE…" /> },
 );
+const LiveDataScreen = dynamic(
+  () => import("@/screens/LiveDataScreen").then((mod) => mod.LiveDataScreen),
+  { loading: () => <ScreenLoader label="LOADING LIVE DATA…" /> },
+);
 const AdminPanel = dynamic(
   () => import("@/screens/AdminPanel").then((mod) => mod.AdminPanel),
   { loading: () => <ScreenLoader label="LOADING ADMIN…" /> },
@@ -110,6 +114,7 @@ const RESPONSIVE_CSS = `
     transition: transform .15s ease, background .15s ease, border-color .15s ease;
   }
 
+  .ra-nav-button--desktop { display: none; }
   .ra-nav-button:hover { transform: translateY(-1px); }
 
   @media (min-width: 820px) {
@@ -158,6 +163,7 @@ const RESPONSIVE_CSS = `
       border-bottom: 2px solid transparent;
     }
 
+    .ra-nav-button--desktop { display: flex; }
     .ra-nav-button > span:first-child { font-size: 20px !important; }
     .ra-nav-button > span:last-child { font-size: 10px !important; letter-spacing: 2px !important; }
 
@@ -269,14 +275,14 @@ export default function App() {
 
         {!hideNav && (
           <nav className="ra-nav">
-            {(NAV_ITEMS as unknown as { id: string; icon: string; label: string; action?: boolean }[]).map((item) => {
+            {(NAV_ITEMS as unknown as { id: string; icon: string; label: string; action?: boolean; desktopOnly?: boolean }[]).map((item) => {
               const active = screen === item.id || (item.id === "race" && screen === "raceScreen");
               const dest = item.id === "race" ? "raceScreen" : item.id as ScreenId;
 
               return (
                 <button
                   key={item.id}
-                  className="ra-nav-button"
+                  className={`ra-nav-button${item.desktopOnly ? " ra-nav-button--desktop" : ""}`}
                   onClick={() => navigate(dest)}
                   style={{
                     background: item.action ? C.accent : active ? `${C.accent}12` : "transparent",
@@ -309,6 +315,7 @@ export default function App() {
                 {screen === "home" && <HomeScreen onNavigate={navigate} />}
                 {screen === "board" && <LeaderboardScreen />}
                 {screen === "explore" && <ExploreScreen />}
+                {screen === "liveData" && <LiveDataScreen />}
 
                 {(screen === "raceScreen" || screen === "race") && (
                   <AuthRequired>
