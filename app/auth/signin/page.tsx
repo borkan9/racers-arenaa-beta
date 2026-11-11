@@ -55,6 +55,11 @@ function SignInContent() {
     }
   };
 
+  const handleGuestSignIn = async () => {
+    window.sessionStorage.setItem("redline:guestMode", "true");
+    router.replace(redirectTo);
+  };
+
   const isLoading  = (p: Provider) => state.status === "loading" && (state as any).provider === p;
   const anyLoading = state.status === "loading";
 
@@ -64,11 +69,9 @@ function SignInContent() {
 
       <div style={{ position: "relative", width: "100%", maxWidth: 400, display: "flex", flexDirection: "column", alignItems: "center", gap: 32 }}>
 
-        {/* Wordmark */}
+        {/* Brand */}
         <div style={{ textAlign: "center" }}>
-          <div className="display" style={{ fontSize: 36, letterSpacing: 6, color: C.text, lineHeight: 1 }}>
-            RACERS<span style={{ color: C.accent }}>·</span>ARENA
-          </div>
+          <img src="/redline-logo.jpg" alt="Redline" style={{ display: "block", width: "min(300px, 80vw)", height: "auto", margin: "0 auto", mixBlendMode: "screen" }} />
           <div style={{ fontFamily: FONT.body, fontSize: 10, color: C.muted, letterSpacing: 4, marginTop: 6 }}>
             NO BRAKES — NO MERCY
           </div>
@@ -77,8 +80,8 @@ function SignInContent() {
         {/* Card */}
         <div style={{ width: "100%", background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: "32px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ textAlign: "center", marginBottom: 8 }}>
-            <div style={{ fontFamily: FONT.body, fontWeight: 700, fontSize: 14, color: C.muted, letterSpacing: 3, marginBottom: 6 }}>SIGN IN TO CONTINUE</div>
-            <div style={{ fontFamily: FONT.body, fontSize: 12, color: C.dim }}>Your session is secured by Supabase Auth</div>
+            <div style={{ fontFamily: FONT.body, fontWeight: 700, fontSize: 14, color: C.muted, letterSpacing: 3, marginBottom: 6 }}>GET ON THE GRID</div>
+            <div style={{ fontFamily: FONT.body, fontSize: 12, color: C.dim }}>Try Redline as a guest, or save your account with a provider.</div>
           </div>
 
           {/* Error */}
@@ -89,6 +92,18 @@ function SignInContent() {
               <button onClick={() => setState({ status: "idle" })} style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 16 }}>✕</button>
             </div>
           )}
+
+          <OAuthButton
+            label="Continue as Guest"
+            loading={false}
+            disabled={anyLoading}
+            onClick={handleGuestSignIn}
+            icon={<span aria-hidden="true" style={{ fontSize: 18 }}>⚡</span>}
+          />
+
+          <p style={{ fontFamily: FONT.body, fontSize: 11, color: C.dim, textAlign: "center", lineHeight: 1.5, margin: "-8px 0 0" }}>
+            Guest progress stays on this browser. Sign in with Google or Discord to keep access across devices.
+          </p>
 
           {/* Google */}
           <OAuthButton

@@ -134,7 +134,7 @@ function RaceCard({ race, expanded, onToggle }: RaceCardProps) {
   const duration = race.duration_ms ? fmtTime(race.duration_ms) : "—";
   const maxSpeed = race.max_speed?.toFixed(1) ?? "0";
   const avgSpeed = race.avg_speed?.toFixed(1)  ?? "0";
-  const modeName = race.mode.replace(/_/g, " ");
+  const modeName = race.mode === "CUSTOM" ? "LONG DISTANCE" : race.mode.replace(/_/g, " ");
 
   return (
     <div style={{

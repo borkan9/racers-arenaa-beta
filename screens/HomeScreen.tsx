@@ -12,13 +12,6 @@ interface HomeScreenProps {
   onNavigate: (screen: ScreenId) => void;
 }
 
-interface TopRacer {
-  id: string;
-  username: string | null;
-  avatar: string | null;
-  value: number;
-}
-
 interface QuickStat {
   val: string;
   label: string;
@@ -45,7 +38,6 @@ function useDemoSpeed(): number {
 
 export function HomeScreen({ onNavigate }: HomeScreenProps) {
   const demoSpeed = useDemoSpeed();
-  const [topRacers, setTopRacers] = useState<TopRacer[]>([]);
   const [stats, setStats] = useState<QuickStat[]>([
     { val: "0", label: "RACERS" },
     { val: "0", label: "TOP KM/H" },
@@ -54,20 +46,7 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
 
   const fetchData = useCallback(async () => {
     try {
-      const [leaderboardRes, statsRes] = await Promise.all([
-        fetch("/api/leaderboard?mode=TOP_SPEED&type=TOP_SPEED&limit=3", { credentials: "include" }),
-        fetch("/api/home"),
-      ]);
-
-      if (leaderboardRes.ok) {
-        const leaderboardBody = await leaderboardRes.json();
-        setTopRacers((leaderboardBody.entries ?? []).map((entry: any) => ({
-          id: entry.user?.id ?? "",
-          username: entry.user?.username ?? "Anonymous",
-          avatar: entry.user?.avatar ?? null,
-          value: entry.value ?? 0,
-        })));
-      }
+      const statsRes = await fetch("/api/home");
 
       if (statsRes.ok) {
         const body = await statsRes.json();
@@ -91,8 +70,7 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
       <div style={{ padding: "40px 20px 24px", textAlign: "center", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, backgroundImage: "repeating-linear-gradient(45deg,rgba(255,255,255,0.04) 0,rgba(255,255,255,0.04) 1px,transparent 0,transparent 50%)", backgroundSize: "8px 8px", pointerEvents: "none" }} />
         <div style={{ position: "relative" }}>
-          <h1 className="display" style={{ fontSize: "clamp(64px,22vw,100px)", lineHeight: 0.9, color: C.text, marginBottom: 2 }}>RACERS</h1>
-          <h1 className="display" style={{ fontSize: "clamp(64px,22vw,100px)", lineHeight: 0.9, WebkitTextStroke: `2px ${C.accent}`, color: "transparent", marginBottom: 20 }}>ARENA</h1>
+          <h1 className="display" style={{ fontSize: "clamp(72px,22vw,108px)", lineHeight: 0.9, color: C.text, marginBottom: 20 }}>REDLINE</h1>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
             <Speedometer speed={demoSpeed} maxSpeed={SPEEDO_MAX_KMH} unit="kmh" style={{ maxWidth: 300 }} />
           </div>
@@ -125,49 +103,7 @@ export function HomeScreen({ onNavigate }: HomeScreenProps) {
           ))}
         </div>
 
-        {topRacers.length > 0 && (
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <span className="display" style={{ fontSize: 18, letterSpacing: 3, color: C.text }}>TOP RACERS</span>
-              <button onClick={() => onNavigate("board")} style={{ fontFamily: FONT.body, fontSize: 11, color: C.accent, fontWeight: 700, letterSpacing: 2, background: "none", border: "none", cursor: "pointer" }}>
-                WEEKLY →
-              </button>
-            </div>
-
-            {topRacers.map((r, i) => (
-              <TopRacerRow key={r.id} racer={r} rank={i + 1} delay={i * 0.06} />
-            ))}
-          </div>
-        )}
       </div>
     </div>
-  );
-}
-
-function TopRacerRow({ racer, rank, delay }: { racer: TopRacer; rank: number; delay: number }) {
-  const RANK_COLORS: Record<number, string> = { 1: C.gold, 2: "#C0C0C0", 3: "#CD7F32" };
-  const initials = (racer.username ?? "??").slice(0, 2).toUpperCase();
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -12 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay, duration: 0.28 }}
-      style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px solid ${C.border}` }}
-    >
-      <span className="display" style={{ fontSize: 20, color: RANK_COLORS[rank] ?? C.muted, minWidth: 28 }}>{rank}</span>
-      <div style={{ width: 36, height: 36, borderRadius: "50%", background: `${C.accent}20`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: FONT.display, fontSize: 14, color: C.text, flexShrink: 0, overflow: "hidden" }}>
-        {racer.avatar ? <img src={racer.avatar} alt={racer.username ?? "avatar"} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : initials}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: FONT.body, fontWeight: 700, fontSize: 14, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {racer.username ?? "Anonymous"}
-        </div>
-      </div>
-      <div style={{ textAlign: "right", flexShrink: 0 }}>
-        <span className="display" style={{ fontSize: 18, color: rank === 1 ? C.gold : C.text }}>{Math.round(racer.value)}</span>
-        <span style={{ fontFamily: FONT.body, fontSize: 10, color: C.muted }}> km/h</span>
-      </div>
-    </motion.div>
   );
 }

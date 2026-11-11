@@ -165,7 +165,7 @@ export function LiveDataScreen() {
   const connect = useCallback(async () => {
     if (!(navigator as any).serial) {
       setStatus("error");
-      setMessage("Web Serial is not available. Open Racers Arena in the latest Chrome or Edge on desktop.");
+      setMessage("Web Serial is not available. Open Redline in the latest Chrome or Edge on desktop.");
       return;
     }
 

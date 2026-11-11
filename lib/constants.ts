@@ -1,6 +1,6 @@
 // lib/constants.ts
 
-export const APP_NAME = "RACERS ARENA";
+export const APP_NAME = "REDLINE";
 export const APP_SLOGAN = "NO BRAKES — NO MERCY";
 
 // ─── COLORS ──────────────────────────────────────────────────────────────────
@@ -85,13 +85,8 @@ export const SPEEDO_END_ANGLE   =   40;
 
 // ─── NAV ITEMS ────────────────────────────────────────────────────────────────
 export const NAV_ITEMS = [
-  { id: "home",     icon: "⚡", label: "HOME"      },
-  { id: "race",     icon: "🏁", label: "RACE",      action: true },
-  { id: "board",    icon: "🏆", label: "RANKS"     },
-  { id: "history",  icon: "📊", label: "HISTORY"   },
-  { id: "explore",  icon: "🌍", label: "EXPLORE"   },
-  { id: "profile",  icon: "👤", label: "PROFILE"   },
-  { id: "liveData", icon: "🧭", label: "LIVE DATA", desktopOnly: true },
+  { id: "race",    label: "RACE" },
+  { id: "profile", label: "PROFILE" },
 ] as const;
 
 // ─── BADGE CONFIG ─────────────────────────────────────────────────────────────
@@ -110,7 +105,7 @@ export const ANTICHEAT = {
 } as const;
 
 // ─── ROUTE LIMITS ─────────────────────────────────────────────────────────────
-export const MAX_ROUTE_POINTS = 500;
+export const MAX_ROUTE_POINTS = 8_000;
 
 // ─── TELEMETRY INTERVALS ─────────────────────────────────────────────────────
 export const TELEMETRY_INTERVAL_MS  = 500;

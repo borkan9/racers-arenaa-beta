@@ -259,7 +259,15 @@ export function useTelemetry({
       state.current.stableFixes = 0;
       setGpsReady(false);
     }
-    setGpsError(err.message);
+    setGpsError(
+      err.code === 1
+        ? "Location access is blocked. Allow GPS access in your browser settings."
+        : err.code === 2
+          ? "GPS signal unavailable. Move somewhere with a clearer view of the sky."
+          : err.code === 3
+            ? "GPS is taking longer than usual. Keep location services on and try again."
+            : err.message,
+    );
   }, [startTime]);
 
   // ── Simulation tick ────────────────────────────────────────────────────────

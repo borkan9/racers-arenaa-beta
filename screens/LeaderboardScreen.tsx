@@ -74,42 +74,33 @@ export function LeaderboardScreen() {
   }, [fetchLeaderboard]);
 
   return (
-    <div style={{ padding: "24px 20px" }}>
-      <div style={{ marginBottom: 20 }}>
-        <h2 className="display" style={{ fontSize: 32, letterSpacing: 4, color: C.text }}>LEADERBOARD</h2>
-        <p style={{ fontFamily: FONT.body, color: C.muted, fontWeight: 600, fontSize: 12, letterSpacing: 1, marginTop: 4 }}>
-          WEEKLY RANKINGS — EACH RACE MODE IS RANKED SEPARATELY
-        </p>
+    <div className="ranks-page" style={{ padding: "10px 0" }}>
+      <div className="ranks-heading">
+        <span className="ra-kicker">THE GRID · THIS WEEK</span>
+        <h1 className="ra-title">Ranks<span>.</span></h1>
+        <p>Top runs from drivers on the board. Every challenge has its own podium.</p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 8, marginBottom: 22 }}>
+      <div className="ranks-mode-list">
         {MODE_OPTIONS.map((option) => (
           <button
             key={option.id}
             onClick={() => setMode(option.id)}
-            style={{
-              padding: "10px 8px",
-              background: mode === option.id ? C.accent : C.card,
-              border: `1px solid ${mode === option.id ? C.accent : C.border}`,
-              borderRadius: 8,
-              color: mode === option.id ? C.white : C.muted,
-              fontFamily: FONT.display,
-              fontSize: 15,
-              letterSpacing: 2,
-              cursor: "pointer",
-            }}
+            className={mode === option.id ? "ranks-mode is-selected" : "ranks-mode"}
           >
             {option.label}
           </button>
         ))}
       </div>
 
+      <div className="ranks-results-heading"><span>{selected.label}</span><span>{entries.length ? `${entries.length} DRIVERS` : "WEEKLY BOARD"}</span></div>
+
       {loading ? (
         <LoadingState />
       ) : error ? (
-        <EmptyState icon="⚠️" title="FAILED TO LOAD" desc={error} />
+        <EmptyState icon="!" title="RANKS UNAVAILABLE" desc={error} />
       ) : entries.length === 0 ? (
-        <EmptyState icon="🏆" title="NO ENTRIES YET" desc={`Complete a ${selected.label} run to appear here.`} />
+        <EmptyState icon="01" title="NO TIMES ON THE BOARD" desc={`Set the first mark with a ${selected.label} run.`} />
       ) : (
         <AnimatePresence mode="wait">
           <motion.div
@@ -119,7 +110,7 @@ export function LeaderboardScreen() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
           >
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               {entries.map((entry, i) => (
                 <LeaderboardRow
                   key={`${entry.mode}:${entry.user.id}`}
@@ -133,11 +124,8 @@ export function LeaderboardScreen() {
         </AnimatePresence>
       )}
 
-      <div style={{ marginTop: 24, padding: "12px 16px", background: C.surface, borderRadius: 10, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 16 }}>🔄</span>
-        <span style={{ fontFamily: FONT.body, fontSize: 12, color: C.muted, letterSpacing: 1 }}>
-          Leaderboards reset every Monday at 00:00 UTC
-        </span>
+      <div className="ranks-footnote">
+        <span>↻</span><span>Leaderboard points refresh every Monday at 00:00 UTC.</span>
       </div>
     </div>
   );

@@ -6,8 +6,8 @@ import { z } from "zod";
 
 const MAX_REALISTIC_SPEED_KMH = 500;
 const MAX_REALISTIC_ACCEL     = 50;
-const MAX_ROUTE_POINTS        = 500;
-const MAX_DISTANCE_KM         = 50;
+const MAX_ROUTE_POINTS        = 8_000;
+const MAX_DISTANCE_KM         = 800;
 
 // ─── ENUMS ────────────────────────────────────────────────────────────────────
 
@@ -49,7 +49,7 @@ export const CreateRaceSchema = z.object({
   duration_ms:  z
     .number()
     .min(0)
-    .max(3_600_000)
+    .max(86_400_000, "Run duration cannot exceed 24 hours.")
     .nullable()
     .optional(),
   max_speed:    z
