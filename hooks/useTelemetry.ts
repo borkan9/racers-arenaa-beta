@@ -39,6 +39,7 @@ export interface UseTelemetryOptions {
 export interface UseTelemetryResult {
   gpsReady: boolean;
   gpsError: string | null;
+  gpsAccuracy: number | null;
 }
 
 // ─── INTERNAL STATE SHAPE ────────────────────────────────────────────────────
@@ -68,7 +69,9 @@ const SIM_START_X = 40;
 const SIM_START_Y = 260;
 const SIM_END_X   = 380;
 const SIM_END_Y   =  60;
-const GPS_MAX_ACCURACY_METERS = 25;
+// Browser GPS often reports 30–70 m accuracy indoors or on a phone's first fix.
+// Requiring 25 m caused the ready indicator to remain stuck on many devices.
+const GPS_MAX_ACCURACY_METERS = 75;
 const GPS_REQUIRED_STABLE_FIXES = 2;
 const GPS_MAX_SAMPLE_AGE_MS = 5_000;
 
@@ -82,6 +85,7 @@ export function useTelemetry({
 }: UseTelemetryOptions): UseTelemetryResult {
   const [gpsReady, setGpsReady] = useState(simulate);
   const [gpsError, setGpsError] = useState<string | null>(null);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
 
   // All mutable internals live in a single ref — zero re-renders from the hook
   const state = useRef<InternalState>({
@@ -148,6 +152,8 @@ export function useTelemetry({
       const accuracy   = pos.coords.accuracy;
       const sampleTime = pos.timestamp;
 
+      if (Number.isFinite(accuracy)) setGpsAccuracy(Math.round(accuracy));
+
       if (
         !Number.isFinite(lat) ||
         !Number.isFinite(lng) ||
@@ -170,7 +176,7 @@ export function useTelemetry({
             : 0;
 
         s.stableFixes =
-          s.lockLat === null || stableDistanceMeters <= GPS_MAX_ACCURACY_METERS
+          s.lockLat === null || stableDistanceMeters <= Math.max(50, accuracy * 1.5)
             ? s.stableFixes + 1
             : 1;
         s.lockLat       = lat;
@@ -464,6 +470,7 @@ export function useTelemetry({
       initializedStartTimeRef.current = null;
       setGpsReady(simulate);
       setGpsError(null);
+      setGpsAccuracy(null);
 
       return;
     }
@@ -524,7 +531,7 @@ export function useTelemetry({
     releaseWakeLock,
   ]);
 
-  return { gpsReady, gpsError };
+  return { gpsReady, gpsError, gpsAccuracy };
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────

@@ -82,7 +82,7 @@ export function RaceScreen({ onExit, isGuest }: RaceScreenProps) {
     });
   }, []);
 
-  const { gpsReady, gpsError } = useTelemetry({
+  const { gpsReady, gpsError, gpsAccuracy } = useTelemetry({
     enabled: phase !== "finished",
     startTime,
     simulate: false,
@@ -241,7 +241,7 @@ export function RaceScreen({ onExit, isGuest }: RaceScreenProps) {
             {guestRun && <p className="config-hint" role="status">Guest mode · your run is live, but it won’t be saved to your profile or ranks.</p>}
 
             <button disabled={!gpsReady} onClick={() => { if (gpsReady) setPhase("countdown"); }} className="start-run-button"><span>{gpsReady ? "START YOUR RUN" : "WAITING FOR GPS"}</span><b>↗</b></button>
-            <div className={gpsError ? "gps-message has-error" : "gps-message"}>{gpsError ?? (gpsReady ? "GPS locked · Ready when you are" : "Allow location access to start tracking")}</div>
+            <div className={gpsError ? "gps-message has-error" : "gps-message"}>{gpsError ?? (gpsReady ? "GPS locked · Ready when you are" : gpsAccuracy !== null && gpsAccuracy > 75 ? `Weak GPS signal · accuracy ±${gpsAccuracy} m. Move to open sky.` : gpsAccuracy !== null ? `Acquiring stable GPS · accuracy ±${gpsAccuracy} m` : "Allow location access to start tracking")}</div>
           </div>
 
           <aside className="race-side-panel">
@@ -266,7 +266,7 @@ export function RaceScreen({ onExit, isGuest }: RaceScreenProps) {
   const isFinished = phase === "finished";
 
   return (
-    <div className="race-active" style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div className={`race-active${isFinished ? " is-finished" : ""}`} style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 20px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: isRacing ? C.accent : C.muted, animation: isRacing ? "blink 1s step-end infinite" : "none" }} />
@@ -286,12 +286,25 @@ export function RaceScreen({ onExit, isGuest }: RaceScreenProps) {
       </div>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "16px 20px", gap: 16, overflow: "hidden" }}>
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <Speedometer speed={displaySpeed} maxSpeed={maxSpeedo} unit={unit} style={{ maxWidth: 340 }} />
-        </div>
+        {isFinished && !longDistance && raceMode === "free" ? (
+          <section aria-label="Free run results" style={{ flex: "0 0 auto", textAlign: "center", padding: "20px 16px", borderRadius: 14, border: `1px solid ${C.border}`, background: `linear-gradient(145deg, ${C.card}, ${C.bg})` }}>
+            <div style={{ color: C.muted, fontFamily: FONT.body, fontSize: 10, fontWeight: 700, letterSpacing: 3 }}>FREE RUN · SESSION SUMMARY</div>
+            <div className="display" style={{ color: C.gold, fontSize: "clamp(48px, 12vw, 76px)", lineHeight: 1.05, marginTop: 8, fontVariantNumeric: "tabular-nums" }}>{Math.round(displayTopSpeed)} <span style={{ fontSize: 16, letterSpacing: 1 }}>{unit === "mph" ? "MPH" : "KM/H"}</span></div>
+            <div style={{ color: C.muted, fontFamily: FONT.body, fontSize: 10, fontWeight: 700, letterSpacing: 2, marginTop: 4 }}>TOP SPEED</div>
+          </section>
+        ) : (
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <Speedometer speed={displaySpeed} maxSpeed={maxSpeedo} unit={unit} style={{ maxWidth: 340 }} />
+          </div>
+        )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10, flexShrink: 0 }}>
-          {(longDistance ? [
+        <div className="result-stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10, flexShrink: 0 }}>
+          {(isFinished && !longDistance && raceMode === "free" ? [
+            { label: "AVG SPEED", val: `${Math.round(convertSpeed(elapsed > 0 ? telemetry.distance / (elapsed / 3_600_000) : 0, unit))}`, sub: unit === "mph" ? "mph" : "km/h", gold: false, hot: false },
+            { label: "DISTANCE", val: fmtDist(telemetry.distance, unit), sub: "", gold: false, hot: false },
+            { label: "DURATION", val: fmtTime(elapsed), sub: "", gold: false, hot: false },
+            { label: "PEAK G", val: telemetry.gForce.toFixed(2), sub: "G", gold: false, hot: telemetry.gForce > 1 },
+          ] : longDistance ? [
             { label: "TOP SPEED", val: `${Math.round(displayTopSpeed)}`, sub: unit === "mph" ? "mph" : "km/h", gold: true, hot: false },
             { label: "AVG SPEED", val: `${Math.round(convertSpeed(telemetry.elapsed > 0 ? telemetry.distance / (telemetry.elapsed / 3_600_000) : 0, unit))}`, sub: unit === "mph" ? "mph" : "km/h", gold: false, hot: false },
             { label: "DISTANCE", val: fmtDist(telemetry.distance, unit), sub: "", gold: false, hot: false },

@@ -144,6 +144,7 @@ const RESPONSIVE_CSS = `
   .safety-note > span { width:16px; height:16px; flex:0 0 16px; display:grid; place-items:center; border:1px solid #55545a; border-radius:50%; font:10px ${FONT.mono}; }
   .safety-note p { font-size:11px; line-height:1.5; }
   .race-active { width:100%; min-height:calc(100vh - 190px) !important; overflow:visible !important; border:1px solid rgba(255,255,255,.08); border-radius:22px; background:radial-gradient(ellipse at 50% 0%,rgba(232,53,10,.1),transparent 34%),#101113 !important; }
+  .race-active.is-finished { overflow:visible !important; }
   .ranks-page { max-width:900px; margin:0 auto; }
   .ranks-heading { margin-bottom:24px; }
   .ranks-heading .ra-title span { color:${C.accent}; }
@@ -198,6 +199,7 @@ const RESPONSIVE_CSS = `
     .stat-teaser { padding:17px; }
     .safety-note { grid-column:auto; }
     .race-active { min-height:calc(100vh - 178px) !important; border-radius:14px; }
+    .race-active.is-finished .result-stats-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
     .profile-page > div:first-child { grid-template-columns:auto 1fr; padding:18px 14px; column-gap:13px; }
     .profile-page > div:first-child > button { width:70px !important; height:70px !important; font-size:28px !important; }
     .profile-page > div:first-child h2 { font-size:21px !important; }
