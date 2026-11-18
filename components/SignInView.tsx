@@ -3,29 +3,31 @@
 import React from "react";
 import styles from "./SignInView.module.css";
 
-export type SignInProvider = "guest" | "google" | "discord";
+export type SignInProvider = "guest" | "google" | "email";
 
 interface SignInViewProps {
   onGuest: () => void;
   onGoogle: () => void;
-  onDiscord: () => void;
+  onEmail: (email: string, password: string, createAccount: boolean) => void;
   onBack: () => void;
   loading: SignInProvider | null;
   error?: string | null;
   onDismissError?: () => void;
   logoSrc?: string;
 }
-
 export function SignInView({
   onGuest,
   onGoogle,
-  onDiscord,
+  onEmail,
   onBack,
   loading,
   error,
   onDismissError,
   logoSrc = "/redline-logo.jpg",
 }: SignInViewProps) {
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [createAccount, setCreateAccount] = React.useState(false);
   const busy = loading !== null;
 
   return (
@@ -65,11 +67,22 @@ export function SignInView({
             <ChevronIcon />
           </button>
 
-          <button type="button" onClick={onDiscord} disabled={busy} className={`${styles.providerButton} ${styles.discordButton}`}>
-            {loading === "discord" ? <Spinner /> : <DiscordIcon />}
-            <span>{loading === "discord" ? "Redirecting…" : "Continue with Discord"}</span>
-            <ChevronIcon />
-          </button>
+          <div className={styles.divider}><span>OR EMAIL</span></div>
+
+          <form className={styles.emailForm} onSubmit={(event) => { event.preventDefault(); onEmail(email, password, createAccount); }}>
+            <label htmlFor="redline-email">Email</label>
+            <input id="redline-email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required disabled={busy} />
+            <label htmlFor="redline-password">Password</label>
+            <input id="redline-password" type="password" autoComplete={createAccount ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 8 characters" minLength={8} required disabled={busy} />
+            <button type="submit" disabled={busy} className={`${styles.providerButton} ${styles.emailButton}`}>
+              {loading === "email" ? <Spinner /> : <LockIcon />}
+              <span>{loading === "email" ? "Please wait…" : createAccount ? "Create account" : "Sign in with email"}</span>
+              <ChevronIcon />
+            </button>
+            <button type="button" disabled={busy} className={styles.modeToggle} onClick={() => setCreateAccount((value) => !value)}>
+              {createAccount ? "Already have an account? Sign in" : "New to Redline? Create an account"}
+            </button>
+          </form>
 
           <div className={styles.divider}><span>OR QUICK ACCESS</span></div>
 
@@ -134,8 +147,4 @@ function GoogleIcon() {
       <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
     </svg>
   );
-}
-
-function DiscordIcon() {
-  return <svg className={styles.discordIcon} viewBox="0 0 24 24" aria-hidden="true"><path d="M19.7 5.4a18 18 0 0 0-4.4-1.4l-.6 1.2a16 16 0 0 0-5.4 0l-.6-1.2a18 18 0 0 0-4.4 1.4C1.5 9.2.7 13 .9 16.8a18 18 0 0 0 5.5 2.8l1.2-2a12 12 0 0 1-1.9-.9l.5-.4a13 13 0 0 0 11.6 0l.5.4a12 12 0 0 1-1.9.9l1.2 2a18 18 0 0 0 5.5-2.8c.3-4.4-.7-8.2-3.4-11.4ZM8.8 14.6c-1.1 0-1.9-1-1.9-2.1s.8-2.1 1.9-2.1 1.9 1 1.9 2.1-.8 2.1-1.9 2.1Zm6.4 0c-1.1 0-1.9-1-1.9-2.1s.8-2.1 1.9-2.1 1.9 1 1.9 2.1-.8 2.1-1.9 2.1Z" /></svg>;
 }

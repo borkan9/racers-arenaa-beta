@@ -35,7 +35,7 @@ function SignInContent() {
     });
   }, [redirectTo, router]);
 
-  const handleOAuth = async (provider: Exclude<SignInProvider, "guest">) => {
+  const handleOAuth = async (provider: Exclude<SignInProvider, "guest" | "email">) => {
     setState({ status: "loading", provider });
     const supabase    = createClient();
     const callbackUrl =
@@ -61,12 +61,32 @@ function SignInContent() {
     router.replace(redirectTo);
   };
 
+  const handleEmailAuth = async (email: string, password: string, createAccount: boolean) => {
+    setState({ status: "loading", provider: "email" });
+    const supabase = createClient();
+    const result = createAccount
+      ? await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/api/auth/callback?redirectTo=${encodeURIComponent(redirectTo)}` } })
+      : await supabase.auth.signInWithPassword({ email, password });
+
+    if (result.error) {
+      setState({ status: "error", message: result.error.message });
+      return;
+    }
+
+    if (createAccount && !result.data.session) {
+      setState({ status: "error", message: "Check your email to confirm your account, then sign in." });
+      return;
+    }
+
+    router.replace(redirectTo);
+  };
+
   return (
     <SignInView
       logoSrc="/redline-logo.jpg"
       onGuest={handleGuestSignIn}
       onGoogle={() => { void handleOAuth("google"); }}
-      onDiscord={() => { void handleOAuth("discord"); }}
+      onEmail={(email, password, createAccount) => { void handleEmailAuth(email, password, createAccount); }}
       onBack={() => router.push("/")}
       loading={state.status === "loading" ? state.provider : null}
       error={state.status === "error" ? state.message : null}

@@ -190,11 +190,18 @@
 .googleButton:hover:not(:disabled) { border-color: #71717a; background: #202024; box-shadow: 0 8px 24px rgba(0, 0, 0, .27); }
 .googleIcon { width: 19px; height: 19px; flex: none; }
 
-.discordButton { border-color: rgba(88, 101, 242, .36); background: rgba(88, 101, 242, .1); }
-.discordButton:hover:not(:disabled) { border-color: #5865f2; background: rgba(88, 101, 242, .18); }
-.discordIcon { width: 20px; height: 20px; flex: none; fill: #7280ff; }
 .chevron { width: 16px; height: 16px; flex: none; fill: none; stroke: #71717a; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .providerButton:hover .chevron { stroke: #d4d4d8; }
+
+.emailForm { display: flex; flex-direction: column; gap: 8px; }
+.emailForm label { margin-top: 2px; color: #a1a1aa; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.emailForm input { width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid rgba(82,82,91,.8); border-radius: 10px; outline: none; background: #111114; color: #f4f4f5; font: 14px Arial, Helvetica, sans-serif; }
+.emailForm input::placeholder { color: #71717a; }
+.emailForm input:focus { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.12); }
+.emailButton { margin-top: 5px; background: rgba(127,29,29,.24); border-color: rgba(239,68,68,.45); }
+.emailButton:hover:not(:disabled) { border-color: #ef4444; background: rgba(127,29,29,.38); }
+.modeToggle { align-self: center; border: 0; padding: 5px 8px; background: transparent; color: #fca5a5; font-size: 11px; font-weight: 650; cursor: pointer; }
+.modeToggle:hover:not(:disabled) { color: #fff; }
 
 .divider {
   position: relative;
