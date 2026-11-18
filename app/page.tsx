@@ -357,7 +357,7 @@ export default function App() {
 
                 {screen === "profile" && (
                   <AuthRequired>
-                    <ProfileScreen />
+                    <ProfileScreen onNavigate={navigate} />
                   </AuthRequired>
                 )}
 

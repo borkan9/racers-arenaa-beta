@@ -8,7 +8,7 @@ import { useProfile, type UpdateProfileResult } from "@/hooks/useProfile";
 import { useSession } from "@/hooks/useSession";
 import { createClient } from "@/lib/supabase/client";
 
-export function ProfileScreen() {
+export function ProfileScreen({ onNavigate }: { onNavigate: (screen: "history") => void }) {
   const { profile, updateProfile, refresh } = useProfile();
   const { user, signOut } = useSession();
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -108,6 +108,19 @@ export function ProfileScreen() {
         <Stat label="MEMBER SINCE" value={new Date(profile.created_at).getFullYear().toString()} />
         <Stat label="PROFILE ID" value={profile.id.slice(0, 8).toUpperCase()} />
       </div>
+
+      <SectionCard title="RACE HISTORY" style={{ marginBottom: 14 }}>
+        <p style={{ margin: "0 0 14px", color: C.muted, fontFamily: FONT.body, fontSize: 13, lineHeight: 1.5 }}>
+          Review your saved runs, stats, and routes.
+        </p>
+        <button
+          type="button"
+          onClick={() => onNavigate("history")}
+          style={{ width: "100%", padding: 13, background: `${C.accent}15`, border: `1px solid ${C.accent}75`, borderRadius: 8, color: C.text, fontFamily: FONT.display, fontSize: 16, letterSpacing: 2, cursor: "pointer" }}
+        >
+          VIEW MY RUNS →
+        </button>
+      </SectionCard>
 
       <SectionCard title="EDIT PROFILE">
         <EditProfileForm
