@@ -73,7 +73,7 @@ const RESPONSIVE_CSS = `
   .race-hero-meta { display:flex; align-items:center; gap:9px; margin-top:24px; color:#85858c; font-size:9px; font-weight:700; letter-spacing:1.7px; }
   .live-dot,.gps-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:${C.accent}; box-shadow:0 0 12px ${C.accent}90; }
   .race-hero-divider { width:24px; height:1px; margin:0 4px; background:#55545a; }
-  .race-hero-art { min-height:310px; position:relative; background-image:linear-gradient(90deg,#121315 0%,rgba(18,19,21,.45) 32%,rgba(18,19,21,.05) 100%),linear-gradient(0deg,rgba(11,12,14,.5),transparent 46%),url('https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=85'); background-size:cover; background-position:center 52%; }
+  .race-hero-art { min-height:310px; position:relative; background-image:linear-gradient(90deg,#121315 0%,rgba(18,19,21,.45) 32%,rgba(18,19,21,.05) 100%),linear-gradient(0deg,rgba(11,12,14,.5),transparent 46%),url('/redline-porsche-night.png'); background-size:cover; background-position:center 76%; }
   .race-hero-art:after { content:""; position:absolute; inset:0; background:linear-gradient(135deg,transparent 56%,rgba(232,53,10,.22)); mix-blend-mode:screen; }
   .hero-mark { position:absolute; right:8%; top:5%; color:rgba(255,255,255,.12); font-family:${FONT.display}; font-size:clamp(90px,16vw,200px); line-height:1; letter-spacing:-10px; }
   .hero-caption { position:absolute; right:24px; bottom:20px; z-index:1; color:rgba(255,255,255,.62); font:700 9px ${FONT.mono}; letter-spacing:2px; }
@@ -184,7 +184,7 @@ const RESPONSIVE_CSS = `
     .race-hero-copy { padding:28px 22px 20px; }
     .race-hero-title { font-size:54px; }
     .race-hero-copy p { font-size:14px; }
-    .race-hero-art { min-height:165px; background-position:center 48%; background-image:linear-gradient(0deg,#121315 0%,rgba(18,19,21,.08) 75%),url('https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1000&q=80'); }
+    .race-hero-art { min-height:165px; background-position:center 76%; background-image:linear-gradient(0deg,#121315 0%,rgba(18,19,21,.08) 75%),url('/redline-porsche-night.png'); }
     .race-hero-art .hero-mark { font-size:106px; }
     .race-workspace { gap:13px; margin-top:13px; }
     .race-config { padding:20px 16px; border-radius:17px; }
