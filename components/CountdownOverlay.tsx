@@ -2,10 +2,11 @@
 
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { C, FONT } from "@/lib/constants";
 import type { CountdownSeconds } from "@/types";
+import { playCountdownBeep } from "@/lib/racing/countdownAudio";
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,14 @@ const transition = {
 export function CountdownOverlay({ from, onComplete }: CountdownOverlayProps) {
   const [n,     setN]     = useState<number>(from);
   const [phase, setPhase] = useState<Phase>("count");
+  const lastSoundRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const soundKey = phase === "go" ? "go" : `count-${n}`;
+    if (lastSoundRef.current === soundKey) return;
+    lastSoundRef.current = soundKey;
+    playCountdownBeep(phase === "go");
+  }, [n, phase]);
 
   useEffect(() => {
     if (phase === "go") {

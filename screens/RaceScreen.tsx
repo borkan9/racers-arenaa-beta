@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Speedometer } from "@/components/Speedometer";
 import { LiveMap } from "@/components/LiveMap";
 import { CountdownOverlay } from "@/components/CountdownOverlay";
+import { primeCountdownAudio } from "@/lib/racing/countdownAudio";
 import { useTelemetry } from "@/hooks/useTelemetry";
 import { useRaceSubmit } from "@/hooks/useRace";
 import { useSession } from "@/hooks/useSession";
@@ -240,7 +241,7 @@ export function RaceScreen({ onExit, isGuest }: RaceScreenProps) {
             {!guestRun && <div className="privacy-row"><span><strong>Private run</strong><small>Keep this session off the public ranks</small></span><button role="switch" aria-checked={isPrivate} onClick={() => setIsPrivate(!isPrivate)} className={isPrivate ? "privacy-switch is-on" : "privacy-switch"} aria-label="Make this a private run"><i /></button></div>}
             {guestRun && <p className="config-hint" role="status">Guest mode · your run is live, but it won’t be saved to your profile or ranks.</p>}
 
-            <button disabled={!gpsReady} onClick={() => { if (gpsReady) setPhase("countdown"); }} className="start-run-button"><span>{gpsReady ? "START YOUR RUN" : "WAITING FOR GPS"}</span><b>↗</b></button>
+            <button disabled={!gpsReady} onClick={() => { if (gpsReady) { primeCountdownAudio(); setPhase("countdown"); } }} className="start-run-button"><span>{gpsReady ? "START YOUR RUN" : "WAITING FOR GPS"}</span><b>↗</b></button>
             <div className={gpsError ? "gps-message has-error" : "gps-message"}>{gpsError ?? (gpsReady ? "GPS locked · Ready when you are" : gpsAccuracy !== null && gpsAccuracy > 75 ? `Weak GPS signal · accuracy ±${gpsAccuracy} m. Move to open sky.` : gpsAccuracy !== null ? `Acquiring stable GPS · accuracy ±${gpsAccuracy} m` : "Allow location access to start tracking")}</div>
           </div>
 
