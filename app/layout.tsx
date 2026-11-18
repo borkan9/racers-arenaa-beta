@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://racers-arenaa-beta.vercel.app"),
+  metadataBase: new URL("https://redline-racers.vercel.app"),
+  alternates: { canonical: "/" },
   title: {
     default: "Redline — Drive. Track. Rise.",
     template: "%s | Redline",

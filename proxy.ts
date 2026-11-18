@@ -18,6 +18,16 @@ function isProtectedPage(pathname: string): boolean {
 }
 
 export async function proxy(request: NextRequest) {
+  const host = request.nextUrl.hostname.toLowerCase();
+  const isLocalDevelopment = ["localhost", "127.0.0.1", "192.168.1.6"].includes(host);
+  if (!isLocalDevelopment && host !== "redline-racers.vercel.app") {
+    const canonicalUrl = request.nextUrl.clone();
+    canonicalUrl.protocol = "https:";
+    canonicalUrl.hostname = "redline-racers.vercel.app";
+    canonicalUrl.port = "";
+    return NextResponse.redirect(canonicalUrl, 308);
+  }
+
   const pathname = request.nextUrl.pathname;
 
   let response = NextResponse.next({
